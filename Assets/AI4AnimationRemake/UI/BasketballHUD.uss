@@ -1,0 +1,376 @@
+.hud-root {
+    flex-grow: 1;
+    position: relative;
+    color: rgb(232, 237, 244);
+    font-size: 12px;
+}
+
+.top-shell {
+    position: absolute;
+    top: 18px;
+    left: 18px;
+    right: 18px;
+    height: 54px;
+    flex-direction: row;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.brand-card,
+.toolbar,
+.glass-card {
+    background-color: rgba(8, 12, 18, 0.88);
+    border-top-width: 1px;
+    border-right-width: 1px;
+    border-bottom-width: 1px;
+    border-left-width: 1px;
+    border-top-color: rgba(255, 255, 255, 0.12);
+    border-right-color: rgba(255, 255, 255, 0.08);
+    border-bottom-color: rgba(255, 255, 255, 0.08);
+    border-left-color: rgba(255, 255, 255, 0.12);
+    border-radius: 12px;
+}
+
+.brand-card {
+    height: 54px;
+    min-width: 350px;
+    padding-left: 10px;
+    padding-right: 12px;
+    flex-direction: row;
+    align-items: center;
+}
+
+.brand-mark {
+    width: 6px;
+    height: 32px;
+    margin-right: 11px;
+    border-radius: 3px;
+    background-color: rgb(255, 174, 32);
+}
+
+.brand-copy {
+    flex-grow: 1;
+}
+
+.brand-title {
+    color: rgb(248, 250, 252);
+    font-size: 16px;
+    -unity-font-style: bold;
+    letter-spacing: 1.5px;
+}
+
+.brand-subtitle,
+.eyebrow,
+.section-label,
+.mono-label,
+.mode-label,
+.control-state,
+.expert-label {
+    color: rgb(133, 147, 166);
+    font-size: 9px;
+    -unity-font-style: bold;
+    letter-spacing: 1px;
+}
+
+.live-pill,
+.mode-pill {
+    height: 28px;
+    padding-left: 10px;
+    padding-right: 10px;
+    flex-direction: row;
+    align-items: center;
+    border-radius: 14px;
+    background-color: rgba(255, 174, 32, 0.10);
+    border-top-width: 1px;
+    border-right-width: 1px;
+    border-bottom-width: 1px;
+    border-left-width: 1px;
+    border-top-color: rgba(255, 174, 32, 0.30);
+    border-right-color: rgba(255, 174, 32, 0.30);
+    border-bottom-color: rgba(255, 174, 32, 0.30);
+    border-left-color: rgba(255, 174, 32, 0.30);
+}
+
+.live-dot {
+    width: 7px;
+    height: 7px;
+    margin-right: 6px;
+    border-radius: 4px;
+    background-color: rgb(83, 224, 151);
+}
+
+.live-label {
+    color: rgb(83, 224, 151);
+    font-size: 9px;
+    -unity-font-style: bold;
+    letter-spacing: 1px;
+}
+
+.toolbar {
+    height: 54px;
+    padding-left: 7px;
+    padding-right: 7px;
+    flex-direction: row;
+    align-items: center;
+}
+
+.toolbar-button {
+    height: 36px;
+    min-width: 74px;
+    margin-right: 6px;
+    padding-left: 14px;
+    padding-right: 14px;
+    color: rgb(146, 157, 173);
+    background-color: rgba(255, 255, 255, 0.04);
+    border-width: 0;
+    border-radius: 9px;
+    font-size: 10px;
+    -unity-font-style: bold;
+    letter-spacing: 1px;
+}
+
+.toolbar-button:hover {
+    color: white;
+    background-color: rgba(255, 255, 255, 0.10);
+}
+
+.toolbar-button.is-active {
+    color: rgb(255, 189, 71);
+    background-color: rgba(255, 174, 32, 0.14);
+    border-top-width: 1px;
+    border-right-width: 1px;
+    border-bottom-width: 1px;
+    border-left-width: 1px;
+    border-top-color: rgba(255, 174, 32, 0.38);
+    border-right-color: rgba(255, 174, 32, 0.38);
+    border-bottom-color: rgba(255, 174, 32, 0.38);
+    border-left-color: rgba(255, 174, 32, 0.38);
+}
+
+.mode-pill {
+    min-width: 142px;
+    justify-content: center;
+    background-color: rgba(66, 184, 255, 0.08);
+    border-top-color: rgba(66, 184, 255, 0.25);
+    border-right-color: rgba(66, 184, 255, 0.25);
+    border-bottom-color: rgba(66, 184, 255, 0.25);
+    border-left-color: rgba(66, 184, 255, 0.25);
+}
+
+.mode-label {
+    color: rgb(116, 204, 255);
+}
+
+.glass-card {
+    position: absolute;
+    padding: 14px;
+}
+
+.telemetry-card {
+    top: 84px;
+    left: 18px;
+    width: 262px;
+    height: 326px;
+}
+
+.card-heading,
+.expert-heading,
+.control-heading,
+.disk-legend {
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
+}
+
+.card-heading {
+    height: 42px;
+    margin-bottom: 7px;
+}
+
+.card-title {
+    margin-top: 1px;
+    color: rgb(248, 250, 252);
+    font-size: 16px;
+    -unity-font-style: bold;
+    letter-spacing: 0.6px;
+}
+
+.mono-label {
+    color: rgb(154, 166, 182);
+}
+
+.section-label {
+    margin-top: 5px;
+    margin-bottom: 4px;
+    color: rgb(255, 179, 47);
+}
+
+.contact-section {
+    margin-top: 8px;
+    color: rgb(82, 198, 255);
+}
+
+.metric-row {
+    height: 22px;
+    flex-direction: row;
+    align-items: center;
+}
+
+.metric-row.compact {
+    height: 17px;
+}
+
+.metric-name {
+    width: 64px;
+    color: rgb(174, 184, 197);
+    font-size: 9px;
+    -unity-font-style: bold;
+    letter-spacing: 0.5px;
+}
+
+.metric-track {
+    flex-grow: 1;
+    height: 6px;
+    overflow: hidden;
+    border-radius: 3px;
+    background-color: rgba(255, 255, 255, 0.08);
+}
+
+.metric-row.compact .metric-track {
+    height: 4px;
+}
+
+.metric-fill {
+    width: 0%;
+    height: 100%;
+    border-radius: 3px;
+}
+
+.style-fill {
+    background-color: rgb(255, 174, 32);
+}
+
+.contact-fill {
+    background-color: rgb(72, 190, 255);
+}
+
+.expert-card {
+    left: 18px;
+    bottom: 18px;
+    width: 520px;
+    height: 122px;
+}
+
+.expert-heading {
+    height: 18px;
+    margin-bottom: 7px;
+}
+
+.expert-grid {
+    height: 70px;
+    flex-direction: row;
+    justify-content: space-between;
+    align-items: flex-end;
+}
+
+.expert-column {
+    width: 49px;
+    height: 70px;
+    align-items: center;
+}
+
+.expert-track {
+    width: 42px;
+    height: 52px;
+    justify-content: flex-end;
+    overflow: hidden;
+    border-radius: 5px;
+    background-color: rgba(255, 255, 255, 0.06);
+}
+
+.expert-fill {
+    width: 100%;
+    height: 0%;
+    border-radius: 5px;
+    background-color: rgb(71, 118, 244);
+}
+
+.expert-1 { background-color: rgb(91, 121, 239); }
+.expert-2 { background-color: rgb(117, 125, 229); }
+.expert-3 { background-color: rgb(151, 132, 207); }
+.expert-4 { background-color: rgb(187, 140, 171); }
+.expert-5 { background-color: rgb(218, 149, 127); }
+.expert-6 { background-color: rgb(241, 160, 81); }
+.expert-7 { background-color: rgb(255, 174, 32); }
+
+.expert-label {
+    margin-top: 3px;
+    color: rgb(115, 128, 145);
+    font-size: 8px;
+}
+
+.control-card {
+    right: 18px;
+    bottom: 18px;
+    width: 250px;
+    height: 310px;
+}
+
+.control-heading {
+    height: 40px;
+}
+
+.control-state {
+    padding-left: 8px;
+    padding-right: 8px;
+    padding-top: 4px;
+    padding-bottom: 4px;
+    color: rgb(135, 147, 163);
+    border-radius: 8px;
+    background-color: rgba(255, 255, 255, 0.05);
+}
+
+.control-card.is-controlling {
+    border-top-color: rgba(255, 174, 32, 0.58);
+    border-right-color: rgba(255, 174, 32, 0.34);
+    border-bottom-color: rgba(255, 174, 32, 0.34);
+    border-left-color: rgba(255, 174, 32, 0.58);
+}
+
+.control-card.is-controlling .control-state {
+    color: rgb(255, 189, 71);
+    background-color: rgba(255, 174, 32, 0.14);
+}
+
+.control-disk {
+    width: 216px;
+    height: 216px;
+    margin-top: 1px;
+    align-self: center;
+}
+
+.disk-legend {
+    height: 24px;
+    padding-left: 4px;
+    padding-right: 4px;
+}
+
+.legend-item {
+    flex-direction: row;
+    align-items: center;
+    color: rgb(118, 131, 148);
+    font-size: 7px;
+    -unity-font-style: bold;
+    letter-spacing: 0.5px;
+}
+
+.legend-dot {
+    width: 6px;
+    height: 6px;
+    margin-right: 4px;
+    border-radius: 3px;
+}
+
+.target-dot { background-color: rgb(255, 190, 58); }
+.pivot-dot { background-color: rgb(113, 226, 142); }
+.momentum-dot { background-color: rgb(181, 116, 255); }

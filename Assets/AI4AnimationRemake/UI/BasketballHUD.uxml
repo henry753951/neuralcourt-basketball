@@ -1,0 +1,80 @@
+<ui:UXML xmlns:ui="UnityEngine.UIElements">
+    <ui:Style src="project://database/Assets/AI4AnimationRemake/UI/BasketballHUD.uss?fileID=7433441132597879392&amp;guid=2aa649a13df3fc44b8ae466ba0ffa0f0&amp;type=3#BasketballHUD" />
+    <ui:VisualElement name="hud-root" class="hud-root" picking-mode="Ignore">
+        <ui:VisualElement class="top-shell">
+            <ui:VisualElement class="brand-card" picking-mode="Ignore">
+                <ui:VisualElement class="brand-mark" picking-mode="Ignore" />
+                <ui:VisualElement class="brand-copy" picking-mode="Ignore">
+                    <ui:Label text="AI4ANIMATION" class="brand-title" />
+                    <ui:Label text="BASKETBALL / REFERENCE 30 HZ" class="brand-subtitle" />
+                </ui:VisualElement>
+                <ui:VisualElement class="live-pill" picking-mode="Ignore">
+                    <ui:VisualElement class="live-dot" picking-mode="Ignore" />
+                    <ui:Label text="LIVE" class="live-label" />
+                </ui:VisualElement>
+            </ui:VisualElement>
+            <ui:VisualElement class="toolbar">
+                <ui:Button name="hud-toggle" text="HUD" class="toolbar-button is-active" />
+                <ui:Button name="debug-toggle" text="DEBUG" class="toolbar-button is-active" />
+                <ui:VisualElement class="mode-pill" picking-mode="Ignore">
+                    <ui:Label text="KEYBOARD + MOUSE" class="mode-label" />
+                </ui:VisualElement>
+            </ui:VisualElement>
+        </ui:VisualElement>
+
+        <ui:VisualElement name="telemetry-card" class="glass-card telemetry-card" picking-mode="Ignore">
+            <ui:VisualElement class="card-heading" picking-mode="Ignore">
+                <ui:VisualElement picking-mode="Ignore">
+                    <ui:Label text="NEURAL STATE" class="eyebrow" />
+                    <ui:Label name="ball-state" text="CONTROLLED" class="card-title" />
+                </ui:VisualElement>
+                <ui:Label name="tick-label" text="TICK 000000" class="mono-label" />
+            </ui:VisualElement>
+            <ui:Label text="STYLE" class="section-label" />
+            <ui:VisualElement class="metric-row"><ui:Label text="STAND" class="metric-name" /><ui:VisualElement class="metric-track"><ui:VisualElement name="style-0" class="metric-fill style-fill" /></ui:VisualElement></ui:VisualElement>
+            <ui:VisualElement class="metric-row"><ui:Label text="MOVE" class="metric-name" /><ui:VisualElement class="metric-track"><ui:VisualElement name="style-1" class="metric-fill style-fill" /></ui:VisualElement></ui:VisualElement>
+            <ui:VisualElement class="metric-row"><ui:Label text="DRIBBLE" class="metric-name" /><ui:VisualElement class="metric-track"><ui:VisualElement name="style-2" class="metric-fill style-fill" /></ui:VisualElement></ui:VisualElement>
+            <ui:VisualElement class="metric-row"><ui:Label text="HOLD" class="metric-name" /><ui:VisualElement class="metric-track"><ui:VisualElement name="style-3" class="metric-fill style-fill" /></ui:VisualElement></ui:VisualElement>
+            <ui:VisualElement class="metric-row"><ui:Label text="SHOOT" class="metric-name" /><ui:VisualElement class="metric-track"><ui:VisualElement name="style-4" class="metric-fill style-fill" /></ui:VisualElement></ui:VisualElement>
+            <ui:Label text="CONTACT" class="section-label contact-section" />
+            <ui:VisualElement class="metric-row compact"><ui:Label text="L FOOT" class="metric-name" /><ui:VisualElement class="metric-track"><ui:VisualElement name="contact-0" class="metric-fill contact-fill" /></ui:VisualElement></ui:VisualElement>
+            <ui:VisualElement class="metric-row compact"><ui:Label text="R FOOT" class="metric-name" /><ui:VisualElement class="metric-track"><ui:VisualElement name="contact-1" class="metric-fill contact-fill" /></ui:VisualElement></ui:VisualElement>
+            <ui:VisualElement class="metric-row compact"><ui:Label text="L HAND" class="metric-name" /><ui:VisualElement class="metric-track"><ui:VisualElement name="contact-2" class="metric-fill contact-fill" /></ui:VisualElement></ui:VisualElement>
+            <ui:VisualElement class="metric-row compact"><ui:Label text="R HAND" class="metric-name" /><ui:VisualElement class="metric-track"><ui:VisualElement name="contact-3" class="metric-fill contact-fill" /></ui:VisualElement></ui:VisualElement>
+            <ui:VisualElement class="metric-row compact"><ui:Label text="BALL" class="metric-name" /><ui:VisualElement class="metric-track"><ui:VisualElement name="contact-4" class="metric-fill contact-fill" /></ui:VisualElement></ui:VisualElement>
+        </ui:VisualElement>
+
+        <ui:VisualElement name="expert-card" class="glass-card expert-card" picking-mode="Ignore">
+            <ui:VisualElement class="expert-heading" picking-mode="Ignore">
+                <ui:Label text="MIXTURE OF EXPERTS" class="eyebrow" />
+                <ui:Label text="GATING WEIGHTS" class="mono-label" />
+            </ui:VisualElement>
+            <ui:VisualElement class="expert-grid" picking-mode="Ignore">
+                <ui:VisualElement class="expert-column"><ui:VisualElement class="expert-track"><ui:VisualElement name="expert-0" class="expert-fill expert-0" /></ui:VisualElement><ui:Label text="01" class="expert-label" /></ui:VisualElement>
+                <ui:VisualElement class="expert-column"><ui:VisualElement class="expert-track"><ui:VisualElement name="expert-1" class="expert-fill expert-1" /></ui:VisualElement><ui:Label text="02" class="expert-label" /></ui:VisualElement>
+                <ui:VisualElement class="expert-column"><ui:VisualElement class="expert-track"><ui:VisualElement name="expert-2" class="expert-fill expert-2" /></ui:VisualElement><ui:Label text="03" class="expert-label" /></ui:VisualElement>
+                <ui:VisualElement class="expert-column"><ui:VisualElement class="expert-track"><ui:VisualElement name="expert-3" class="expert-fill expert-3" /></ui:VisualElement><ui:Label text="04" class="expert-label" /></ui:VisualElement>
+                <ui:VisualElement class="expert-column"><ui:VisualElement class="expert-track"><ui:VisualElement name="expert-4" class="expert-fill expert-4" /></ui:VisualElement><ui:Label text="05" class="expert-label" /></ui:VisualElement>
+                <ui:VisualElement class="expert-column"><ui:VisualElement class="expert-track"><ui:VisualElement name="expert-5" class="expert-fill expert-5" /></ui:VisualElement><ui:Label text="06" class="expert-label" /></ui:VisualElement>
+                <ui:VisualElement class="expert-column"><ui:VisualElement class="expert-track"><ui:VisualElement name="expert-6" class="expert-fill expert-6" /></ui:VisualElement><ui:Label text="07" class="expert-label" /></ui:VisualElement>
+                <ui:VisualElement class="expert-column"><ui:VisualElement class="expert-track"><ui:VisualElement name="expert-7" class="expert-fill expert-7" /></ui:VisualElement><ui:Label text="08" class="expert-label" /></ui:VisualElement>
+            </ui:VisualElement>
+        </ui:VisualElement>
+
+        <ui:VisualElement name="control-card" class="glass-card control-card" picking-mode="Ignore">
+            <ui:VisualElement class="control-heading" picking-mode="Ignore">
+                <ui:VisualElement picking-mode="Ignore">
+                    <ui:Label text="DRIBBLE CONTROL" class="eyebrow" />
+                    <ui:Label text="BALL TARGET" class="card-title" />
+                </ui:VisualElement>
+                <ui:Label name="control-state" text="IDLE" class="control-state" />
+            </ui:VisualElement>
+            <ui:VisualElement name="control-disk" class="control-disk" picking-mode="Ignore" />
+            <ui:VisualElement class="disk-legend" picking-mode="Ignore">
+                <ui:VisualElement class="legend-item"><ui:VisualElement class="legend-dot target-dot" /><ui:Label text="INPUT" /></ui:VisualElement>
+                <ui:VisualElement class="legend-item"><ui:VisualElement class="legend-dot pivot-dot" /><ui:Label text="PIVOT" /></ui:VisualElement>
+                <ui:VisualElement class="legend-item"><ui:VisualElement class="legend-dot momentum-dot" /><ui:Label text="MOMENTUM" /></ui:VisualElement>
+            </ui:VisualElement>
+        </ui:VisualElement>
+    </ui:VisualElement>
+</ui:UXML>

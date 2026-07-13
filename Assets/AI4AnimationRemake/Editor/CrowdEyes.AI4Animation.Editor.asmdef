@@ -1,0 +1,20 @@
+{
+  "name": "CrowdEyes.AI4Animation.Editor",
+  "rootNamespace": "CrowdEyes.AI4Animation.Editor",
+  "references": [
+    "CrowdEyes.AI4Animation.Runtime",
+    "Unity.InputSystem",
+    "Unity.ugui"
+  ],
+  "includePlatforms": [
+    "Editor"
+  ],
+  "excludePlatforms": [],
+  "allowUnsafeCode": false,
+  "overrideReferences": false,
+  "precompiledReferences": [],
+  "autoReferenced": false,
+  "defineConstraints": [],
+  "versionDefines": [],
+  "noEngineReferences": false
+}

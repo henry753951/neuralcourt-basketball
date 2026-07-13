@@ -1,0 +1,21 @@
+{
+  "name": "CrowdEyes.AI4Animation.Tests.EditMode",
+  "rootNamespace": "CrowdEyes.AI4Animation.Tests",
+  "references": [
+    "CrowdEyes.AI4Animation.Runtime"
+  ],
+  "includePlatforms": [
+    "Editor"
+  ],
+  "excludePlatforms": [],
+  "allowUnsafeCode": false,
+  "overrideReferences": false,
+  "precompiledReferences": [],
+  "autoReferenced": false,
+  "defineConstraints": [],
+  "versionDefines": [],
+  "noEngineReferences": false,
+  "optionalUnityReferences": [
+    "TestAssemblies"
+  ]
+}

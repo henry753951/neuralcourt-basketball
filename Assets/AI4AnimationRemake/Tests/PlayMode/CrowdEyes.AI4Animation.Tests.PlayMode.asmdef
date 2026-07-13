@@ -1,0 +1,21 @@
+{
+  "name": "CrowdEyes.AI4Animation.Tests.PlayMode",
+  "rootNamespace": "CrowdEyes.AI4Animation.Tests",
+  "references": [
+    "CrowdEyes.AI4Animation.Runtime"
+  ],
+  "includePlatforms": [],
+  "excludePlatforms": [],
+  "allowUnsafeCode": false,
+  "overrideReferences": false,
+  "precompiledReferences": [],
+  "autoReferenced": false,
+  "defineConstraints": [
+    "UNITY_INCLUDE_TESTS"
+  ],
+  "versionDefines": [],
+  "noEngineReferences": false,
+  "optionalUnityReferences": [
+    "TestAssemblies"
+  ]
+}

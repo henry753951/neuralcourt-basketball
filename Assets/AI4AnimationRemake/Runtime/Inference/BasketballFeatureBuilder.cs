@@ -10,7 +10,7 @@ namespace CrowdEyes.AI4Animation.Basketball
 
         public void Build(BasketballAgentState state, Span<float> input)
         {
-            if (input.Length != BasketballModelAsset.InputFeatureCount)
+            if (input.Length != BasketballModelContract.InputFeatureCount)
             {
                 throw new ArgumentException("Basketball input buffer must contain exactly 864 floats.", nameof(input));
             }

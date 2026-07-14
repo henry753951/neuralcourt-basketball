@@ -18,16 +18,15 @@ namespace CrowdEyes.AI4Animation.Basketball
         [SerializeField] private Camera movementCamera;
         [SerializeField] private LayerMask collisionMask = 4097;
 
-        private readonly float[] input = new float[BasketballModelAsset.InputFeatureCount];
-        private readonly float[] output = new float[BasketballModelAsset.OutputFeatureCount];
+        private readonly float[] input = new float[BasketballModelContract.InputFeatureCount];
+        private readonly float[] output = new float[BasketballModelContract.OutputFeatureCount];
         private readonly float[] externalGatingWeights =
-            new float[BasketballModelAsset.ExpertCount];
+            new float[BasketballModelContract.ExpertCount];
         private readonly BasketballFeatureBuilder featureBuilder = new();
         private readonly BasketballOutputDecoder outputDecoder = new();
         private readonly BasketballPoseBuffer previousPose = new();
         private readonly BasketballPoseBuffer currentPose = new();
 
-        private IBasketballInferenceBackend backend;
         private BasketballAgentState state;
         private BasketballPoseApplicator poseApplicator;
         private BasketballTwistCorrector twistCorrector;
@@ -36,8 +35,6 @@ namespace CrowdEyes.AI4Animation.Basketball
         private ThirdPersonOrbitCamera orbitCamera;
         private BasketballIntent intent;
         private bool intentOverride;
-        private float accumulator;
-        private float tickInterval;
         private int reacquireTicksRemaining;
         private bool initialized;
         private IBasketballPossessionAuthority possessionAuthority;
@@ -56,31 +53,14 @@ namespace CrowdEyes.AI4Animation.Basketball
         public int SimulationTickCount => state?.TickCount ?? 0;
         public BasketballAgentState State => state;
         public bool IsCarrier => state != null && state.Carrier;
-        public string InferenceBackendName
-        {
-            get
-            {
-                if (externalBatchScheduler != null)
-                {
-                    return externalBatchScheduler.BackendName;
-                }
-                if (rig != null &&
-                    rig.InferenceBackend == BasketballInferenceBackendType.SentisGpuBatch &&
-                    backend != null)
-                {
-                    return $"{backend.Name} FALLBACK";
-                }
-                return backend?.Name ?? "UNINITIALIZED";
-            }
-        }
+        public string InferenceBackendName => externalBatchScheduler != null
+            ? externalBatchScheduler.BackendName
+            : "GPU COMPUTE WAITING";
         public float InferenceRoundTripMilliseconds => externalBatchScheduler != null
             ? externalBatchScheduler.LastRoundTripMilliseconds
             : -1f;
         public bool IsInferencePending => externalBatchScheduler != null &&
                                           externalBatchScheduler.IsReadbackPending;
-        public bool WantsSentisBatch => rig != null &&
-                                         rig.InferenceBackend ==
-                                         BasketballInferenceBackendType.SentisGpuBatch;
         public BasketballIntent CurrentIntent => intent;
         public BasketballBallAuthorityState BallState =>
             rig != null && rig.Ball != null ? rig.Ball.State : BasketballBallAuthorityState.FreePhysics;
@@ -92,7 +72,7 @@ namespace CrowdEyes.AI4Animation.Basketball
             // Unity can restore a playing scene after a script-domain reload while
             // non-serialized runtime buffers are empty. Rebuild them before Update.
             if (Application.isPlaying &&
-                (state == null || backend == null || poseApplicator == null))
+                (state == null || poseApplicator == null))
             {
                 initialized = false;
                 Initialize();
@@ -110,24 +90,6 @@ namespace CrowdEyes.AI4Animation.Basketball
             {
                 intent = inputProvider.ReadIntent();
             }
-            if (externalBatchScheduler != null)
-            {
-                return;
-            }
-            RefreshTickInterval();
-            int maximumCatchUpTicks = rig.MaximumCatchUpTicks;
-            accumulator += Mathf.Min(Time.deltaTime, tickInterval * maximumCatchUpTicks);
-            int ticks = 0;
-            while (accumulator >= tickInterval && ticks < maximumCatchUpTicks)
-            {
-                SimulateTick();
-                accumulator -= tickInterval;
-                ticks++;
-            }
-            if (ticks == maximumCatchUpTicks && accumulator >= tickInterval)
-            {
-                accumulator = tickInterval;
-            }
         }
 
         private void LateUpdate()
@@ -136,11 +98,7 @@ namespace CrowdEyes.AI4Animation.Basketball
             {
                 return;
             }
-            float alpha = rig.RenderInterpolation
-                ? externalBatchScheduler != null
-                    ? externalInterpolationAlpha
-                    : accumulator / tickInterval
-                : 1f;
+            float alpha = rig.RenderInterpolation ? externalInterpolationAlpha : 1f;
             if (rig.RuntimeSettings != null)
             {
                 alpha = rig.RuntimeSettings.ShapeInterpolationAlpha(alpha);
@@ -149,12 +107,6 @@ namespace CrowdEyes.AI4Animation.Basketball
                 ? possessionAuthority.CanWriteBall(this)
                 : state.Carrier;
             poseApplicator.Apply(previousPose, currentPose, alpha, applyBall);
-        }
-
-        private void OnDestroy()
-        {
-            backend?.Dispose();
-            backend = null;
         }
 
         public void Initialize()
@@ -173,23 +125,6 @@ namespace CrowdEyes.AI4Animation.Basketball
                 throw new InvalidOperationException($"Basketball reference rig is invalid: {reason}");
             }
 
-            tickInterval = 1f / rig.NeuralTickRate;
-            backend = rig.InferenceBackend switch
-            {
-                BasketballInferenceBackendType.Burst => new BasketballBurstBackend(),
-                BasketballInferenceBackendType.SentisGpuBatch => new BasketballBurstBackend(),
-                _ => new BasketballReferenceBackend()
-            };
-            try
-            {
-                backend.Initialize(rig.Model);
-            }
-            catch
-            {
-                backend.Dispose();
-                backend = null;
-                throw;
-            }
             state = new BasketballAgentState();
             state.Initialize(transform, rig.Skeleton, rig.Ball);
             twistCorrector = new BasketballTwistCorrector();
@@ -205,7 +140,6 @@ namespace CrowdEyes.AI4Animation.Basketball
             orbitCamera = movementCamera != null
                 ? movementCamera.GetComponent<ThirdPersonOrbitCamera>()
                 : null;
-            accumulator = 0f;
             initialized = true;
         }
 
@@ -213,35 +147,6 @@ namespace CrowdEyes.AI4Animation.Basketball
         {
             rig = rig != null ? rig : GetComponent<BasketballReferenceRig>();
             rig?.SetRuntimeSettings(value);
-            if (initialized)
-            {
-                RefreshTickInterval();
-            }
-        }
-
-        private void RefreshTickInterval()
-        {
-            float configuredInterval = 1f / Mathf.Max(1, rig.NeuralTickRate);
-            if (Mathf.Approximately(configuredInterval, tickInterval))
-            {
-                return;
-            }
-            tickInterval = configuredInterval;
-            accumulator = Mathf.Min(accumulator, tickInterval);
-        }
-
-        public void SimulateTick()
-        {
-            if (!initialized)
-            {
-                throw new InvalidOperationException("BasketballNeuralController is not initialized.");
-            }
-            if (!PrepareTick())
-            {
-                return;
-            }
-            backend.Evaluate(input, output);
-            CompleteTick(output);
         }
 
         internal bool PrepareExternalTick(Span<float> destination)
@@ -285,17 +190,10 @@ namespace CrowdEyes.AI4Animation.Basketball
             CompleteTick(output);
         }
 
-        internal void CompletePreparedTickLocally()
-        {
-            backend.Evaluate(input, output);
-            CompleteTick(output);
-        }
-
         internal void SetExternalBatchScheduler(BasketballSentisBatchScheduler scheduler)
         {
             externalBatchScheduler = scheduler;
             externalInterpolationAlpha = scheduler != null ? 0f : 1f;
-            accumulator = 0f;
             if (scheduler == null)
             {
                 Array.Clear(externalGatingWeights, 0, externalGatingWeights.Length);
@@ -416,11 +314,6 @@ namespace CrowdEyes.AI4Animation.Basketball
             {
                 throw new ArgumentNullException(nameof(destination));
             }
-            if (backend == null)
-            {
-                Array.Clear(destination, 0, destination.Length);
-                return;
-            }
             if (externalBatchScheduler != null)
             {
                 int count = Mathf.Min(destination.Length, externalGatingWeights.Length);
@@ -431,7 +324,7 @@ namespace CrowdEyes.AI4Animation.Basketball
                 }
                 return;
             }
-            backend.CopyGatingWeights(destination);
+            Array.Clear(destination, 0, destination.Length);
         }
 
         private void ApplyControl()

@@ -2,19 +2,9 @@ using UnityEngine;
 
 namespace CrowdEyes.AI4Animation.Basketball
 {
-    public enum BasketballInferenceBackendType
-    {
-        Reference,
-        Burst,
-        SentisGpuBatch
-    }
-
     [DisallowMultipleComponent]
     public sealed class BasketballReferenceRig : MonoBehaviour
     {
-        [SerializeField]
-        private BasketballModelAsset model;
-
         [SerializeField]
         private BasketballSkeleton skeleton;
 
@@ -23,7 +13,6 @@ namespace CrowdEyes.AI4Animation.Basketball
 
         private BasketballRuntimeSettings runtimeSettings;
 
-        public BasketballModelAsset Model => model;
         public BasketballSkeleton Skeleton => skeleton;
         public BasketballBallController Ball => ball;
         public BasketballRuntimeSettings RuntimeSettings => runtimeSettings != null
@@ -43,24 +32,8 @@ namespace CrowdEyes.AI4Animation.Basketball
                                        RuntimeSettings.EnableDebugDraw;
         public bool DeterministicMode => RuntimeSettings == null ||
                                          RuntimeSettings.DeterministicMode;
-        public BasketballInferenceBackendType InferenceBackend => RuntimeSettings != null
-            ? RuntimeSettings.InferenceBackend
-            : BasketballInferenceBackendType.Reference;
-
         public bool Validate(out string reason)
         {
-            if (model == null)
-            {
-                reason = "Basketball model is not assigned.";
-                return false;
-            }
-
-            if (!model.Validate(out reason))
-            {
-                reason = $"Model: {reason}";
-                return false;
-            }
-
             if (skeleton == null)
             {
                 reason = "Basketball skeleton is not assigned.";
@@ -92,11 +65,9 @@ namespace CrowdEyes.AI4Animation.Basketball
 
 #if UNITY_EDITOR
         public void Configure(
-            BasketballModelAsset modelAsset,
             BasketballSkeleton skeletonComponent,
             BasketballBallController ballComponent)
         {
-            model = modelAsset;
             skeleton = skeletonComponent;
             ball = ballComponent;
         }

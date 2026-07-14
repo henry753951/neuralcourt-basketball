@@ -116,13 +116,14 @@ Sensor classes under `Scripts/Animation/Sensors` and `PID.cs` are not used by th
 | `Scripts/DeepLearning/NeuralNetwork.cs` | Input/output cursors and abstract network lifecycle | Contract reference |
 | `Scripts/DeepLearning/Native/Parameters.cs` | ScriptableObject containing named float buffers | Import/data reference |
 | `Scripts/DeepLearning/Native/Models/ExpertModel.cs` | Gating, Softmax, expert blend, dense layers, ELU, normalization | Required mathematical reference |
-| `Scripts/DeepLearning/Native/NativeNetwork.cs` | Native matrix allocation/layer/blend wrappers | Reference only if pure C# backend replaces it |
-| `Scripts/DeepLearning/Matrix.cs` | Native matrix handle wrapper | Reference only if pure C# backend replaces it |
-| `Scripts/Plugins/Eigen/Eigen.cs` | P/Invoke declarations | Legacy comparison backend only |
-| `Scripts/Plugins/Eigen/Eigen.dll` | Windows native Eigen implementation | Optional comparison baseline; not the maintainable default |
+| `Scripts/DeepLearning/Native/NativeNetwork.cs` | Native matrix allocation/layer/blend wrappers | Historical source reference only |
+| `Scripts/DeepLearning/Matrix.cs` | Native matrix handle wrapper | Historical source reference only |
+| `Scripts/Plugins/Eigen/Eigen.cs` | P/Invoke declarations | Excluded from Unity 6 runtime |
+| `Scripts/Plugins/Eigen/Eigen.dll` | Windows native Eigen implementation | Excluded from Unity 6 runtime |
 | `AI4Animation/Plugins/Source/Eigen/Eigen.cpp` | Authoritative formulas and matrix operations | Mathematical reference outside Unity project |
 
-The old Windows DLL is 69,120 bytes. Its Unity 2019 importer enables the Editor as `AnyCPU` and several obsolete platforms. Unity 6 load compatibility has not been claimed. The planned reference backend reads the same row-major buffers into preallocated C# arrays and implements the same formulas.
+The old Windows DLL is 69,120 bytes. Its Unity 2019 importer targets obsolete platforms and it is
+not shipped. The accepted runtime model is the fixed ONNX consumed only by GPUCompute.
 
 ### IK, math, and debug support
 

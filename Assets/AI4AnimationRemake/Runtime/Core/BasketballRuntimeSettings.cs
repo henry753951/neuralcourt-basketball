@@ -33,8 +33,6 @@ namespace CrowdEyes.AI4Animation.Basketball
         [SerializeField] private bool enableContactIK = true;
         [SerializeField] private bool enableDebugDraw;
         [SerializeField] private bool deterministicMode = true;
-        [SerializeField] private BasketballInferenceBackendType inferenceBackend =
-            BasketballInferenceBackendType.SentisGpuBatch;
 
         [Header("Application")]
         [SerializeField, Range(-1, 360)] private int targetFrameRate = -1;
@@ -85,7 +83,6 @@ namespace CrowdEyes.AI4Animation.Basketball
         public bool EnableContactIK => enableContactIK;
         public bool EnableDebugDraw => enableDebugDraw;
         public bool DeterministicMode => deterministicMode;
-        public BasketballInferenceBackendType InferenceBackend => inferenceBackend;
         public int TargetFrameRate => targetFrameRate;
         public int VSyncCount => vSyncCount;
 

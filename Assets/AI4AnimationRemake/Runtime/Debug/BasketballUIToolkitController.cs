@@ -25,13 +25,13 @@ namespace CrowdEyes.AI4Animation.Basketball
         [SerializeField] private StyleSheet styleSheet;
         [SerializeField] private bool telemetryVisible = true;
 
-        private readonly float[] gating = new float[BasketballModelAsset.ExpertCount];
+        private readonly float[] gating = new float[BasketballModelContract.ExpertCount];
         private readonly VisualElement[] styleBars = new VisualElement[BasketballAgentState.StyleCount];
         private readonly VisualElement[] contactBars = new VisualElement[BasketballAgentState.ContactCount];
-        private readonly VisualElement[] expertBars = new VisualElement[BasketballModelAsset.ExpertCount];
+        private readonly VisualElement[] expertBars = new VisualElement[BasketballModelContract.ExpertCount];
         private readonly float[] lastStylePercent = new float[BasketballAgentState.StyleCount];
         private readonly float[] lastContactPercent = new float[BasketballAgentState.ContactCount];
-        private readonly float[] lastExpertPercent = new float[BasketballModelAsset.ExpertCount];
+        private readonly float[] lastExpertPercent = new float[BasketballModelContract.ExpertCount];
         private readonly BasketballPerformanceMonitor performanceMonitor = new();
 
         private UIDocument document;

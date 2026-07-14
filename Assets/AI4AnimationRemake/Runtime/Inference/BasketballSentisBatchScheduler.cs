@@ -18,7 +18,7 @@ namespace CrowdEyes.AI4Animation.Basketball
     {
         public const int BatchSize = 3;
         public const int CombinedOutputCount =
-            BasketballModelAsset.OutputFeatureCount + BasketballModelAsset.ExpertCount;
+            BasketballModelContract.PackedOutputFeatureCount;
 
         private const string DefaultResourcePath = "Models/BasketballMoEBatch3";
         private const string InputName = "input";
@@ -37,22 +37,29 @@ namespace CrowdEyes.AI4Animation.Basketball
         private readonly BasketballNeuralController[] controllers =
             new BasketballNeuralController[BatchSize];
         private readonly float[] batchInput =
-            new float[BatchSize * BasketballModelAsset.InputFeatureCount];
+            new float[BatchSize * BasketballModelContract.InputFeatureCount];
 
         private Worker worker;
         private Tensor<float> inputTensor;
         private Tensor<float> pendingOutput;
         private SchedulerState schedulerState;
         private float accumulator;
-        private int preparedControllerCount;
         private double inferenceStartTime;
         private bool controllersAttached;
         private float tickInterval = 1f / BasketballAgentState.Framerate;
         private int maximumBufferedTicks = 4;
 
-        public string BackendName => SystemInfo.graphicsDeviceType == GraphicsDeviceType.Direct3D12
-            ? "SENTIS DML BATCH 3"
-            : "SENTIS GPU BATCH 3";
+        public string BackendName => schedulerState switch
+        {
+            SchedulerState.WarmingUp => "SENTIS GPU WARMUP",
+            SchedulerState.Failed => "SENTIS GPU ERROR",
+            SchedulerState.Disposed => "SENTIS GPU STOPPED",
+            SchedulerState.Running when
+                SystemInfo.graphicsDeviceType == GraphicsDeviceType.Direct3D12 =>
+                "SENTIS DML BATCH 3",
+            SchedulerState.Running => "SENTIS GPU BATCH 3",
+            _ => "SENTIS GPU INITIALIZING"
+        };
         public float LastRoundTripMilliseconds { get; private set; } = -1f;
         public bool IsReadbackPending => schedulerState == SchedulerState.Running &&
                                          pendingOutput != null;
@@ -65,6 +72,17 @@ namespace CrowdEyes.AI4Animation.Basketball
             Running,
             Failed,
             Disposed
+        }
+
+        private void OnEnable()
+        {
+            if ((schedulerState == SchedulerState.Disposed ||
+                 schedulerState == SchedulerState.Failed) &&
+                players != null && players.Length > 0)
+            {
+                schedulerState = SchedulerState.Uninitialized;
+                InitializeScheduler();
+            }
         }
 
         private void Update()
@@ -136,13 +154,14 @@ namespace CrowdEyes.AI4Animation.Basketball
         {
             try
             {
+                ResolveControllers();
+                AttachControllers();
                 if (!SystemInfo.supportsComputeShaders)
                 {
                     throw new NotSupportedException(
                         "This device does not support the compute shaders required by " +
                         "the Sentis GPUCompute backend.");
                 }
-                ResolveControllers();
                 ResolveSchedulingSettings();
                 modelAsset = modelAsset != null
                     ? modelAsset
@@ -156,14 +175,14 @@ namespace CrowdEyes.AI4Animation.Basketball
                 Model model = ModelLoader.Load(modelAsset);
                 ValidateModelContract(model);
                 inputTensor = new Tensor<float>(
-                    new TensorShape(BatchSize, BasketballModelAsset.InputFeatureCount),
+                    new TensorShape(BatchSize, BasketballModelContract.InputFeatureCount),
                     batchInput);
                 worker = new Worker(model, BackendType.GPUCompute);
                 BeginWarmup();
             }
             catch (Exception exception)
             {
-                FailToLocalBackends("initialization", exception, completePrepared: false);
+                FailGpu("initialization", exception);
             }
         }
 
@@ -186,11 +205,6 @@ namespace CrowdEyes.AI4Animation.Basketball
                         $"Sentis batch player {index + 1} has no neural controller.");
                 }
                 controller.Initialize();
-                if (!controller.WantsSentisBatch)
-                {
-                    throw new InvalidOperationException(
-                        $"Player {index + 1} is not configured for SentisGpuBatch.");
-                }
                 controllers[index] = controller;
             }
         }
@@ -260,33 +274,30 @@ namespace CrowdEyes.AI4Animation.Basketball
                 using Tensor<float> warmupOutput = pendingOutput.ReadbackAndClone();
                 ValidateOutputTensor(warmupOutput);
                 pendingOutput = null;
-                AttachControllers();
                 accumulator = 0f;
                 LastRoundTripMilliseconds = -1f;
                 schedulerState = SchedulerState.Running;
             }
             catch (Exception exception)
             {
-                FailToLocalBackends("warmup", exception, completePrepared: false);
+                FailGpu("warmup", exception);
             }
         }
 
         private void BeginBatch()
         {
-            preparedControllerCount = 0;
             try
             {
                 for (int index = 0; index < BatchSize; index++)
                 {
                     Span<float> row = batchInput.AsSpan(
-                        index * BasketballModelAsset.InputFeatureCount,
-                        BasketballModelAsset.InputFeatureCount);
+                        index * BasketballModelContract.InputFeatureCount,
+                        BasketballModelContract.InputFeatureCount);
                     if (!controllers[index].PrepareExternalTick(row))
                     {
                         throw new InvalidOperationException(
                             $"Player {index + 1} produced an invalid neural input.");
                     }
-                    preparedControllerCount++;
                 }
 
                 using (InferenceMarker.Auto())
@@ -302,7 +313,7 @@ namespace CrowdEyes.AI4Animation.Basketball
             }
             catch (Exception exception)
             {
-                FailToLocalBackends("schedule", exception, completePrepared: true);
+                FailGpu("schedule", exception);
             }
         }
 
@@ -322,15 +333,14 @@ namespace CrowdEyes.AI4Animation.Basketball
                         controllers[index].CompleteExternalTick(
                             values.Slice(
                                 rowStart,
-                                BasketballModelAsset.OutputFeatureCount),
+                                BasketballModelContract.OutputFeatureCount),
                             values.Slice(
-                                rowStart + BasketballModelAsset.OutputFeatureCount,
-                                BasketballModelAsset.ExpertCount));
+                                rowStart + BasketballModelContract.OutputFeatureCount,
+                                BasketballModelContract.ExpertCount));
                     }
                 }
 
                 pendingOutput = null;
-                preparedControllerCount = 0;
                 accumulator = Mathf.Max(0f, accumulator - tickInterval);
                 LastRoundTripMilliseconds = (float)(
                     (Time.realtimeSinceStartupAsDouble - inferenceStartTime) * 1000.0);
@@ -338,7 +348,7 @@ namespace CrowdEyes.AI4Animation.Basketball
             }
             catch (Exception exception)
             {
-                FailToLocalBackends("readback", exception, completePrepared: false);
+                FailGpu("readback", exception);
                 return false;
             }
         }
@@ -404,34 +414,13 @@ namespace CrowdEyes.AI4Animation.Basketball
             }
         }
 
-        private void FailToLocalBackends(
-            string stage,
-            Exception exception,
-            bool completePrepared)
+        private void FailGpu(string stage, Exception exception)
         {
-            if (completePrepared)
-            {
-                for (int index = 0; index < preparedControllerCount; index++)
-                {
-                    try
-                    {
-                        controllers[index]?.CompletePreparedTickLocally();
-                    }
-                    catch (Exception fallbackException)
-                    {
-                        Debug.LogException(fallbackException, controllers[index]);
-                    }
-                }
-            }
-
-            pendingOutput = null;
-            preparedControllerCount = 0;
-            DetachControllers();
             DisposeSentis();
             schedulerState = SchedulerState.Failed;
-            Debug.LogWarning(
-                $"Basketball Sentis GPU batch failed during {stage}; all players remain on " +
-                $"their local Burst fallback. {exception.GetType().Name}: {exception.Message}",
+            Debug.LogError(
+                $"Basketball GPU-only inference failed during {stage}; neural simulation " +
+                $"has stopped. {exception.GetType().Name}: {exception.Message}",
                 this);
         }
 

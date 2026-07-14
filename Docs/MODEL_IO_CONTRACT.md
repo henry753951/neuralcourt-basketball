@@ -1,6 +1,6 @@
 # Basketball 2020 Model I/O Contract
 
-Last verified: 2026-07-13
+Last verified: 2026-07-15
 
 This document is the compatibility contract for the SIGGRAPH 2020 Interactive Basketball pretrained model. Indices are zero-based and ranges are half-open unless shown as an inclusive table range.
 
@@ -253,14 +253,14 @@ The update magnitude becomes amplitude. Phase is reconstructed from a stability-
 
 ## Normalization and ExpertModel math
 
-The model asset includes:
+The pretrained model includes:
 
 - `Xmean`: 864 floats.
 - `Xstd`: 864 floats.
 - `Ymean`: 588 floats.
 - `Ystd`: 588 floats.
 
-Reference formulas:
+Mathematical contract:
 
 ```text
 Xn[i] = (X[i] - Xmean[i]) / Xstd[i]
@@ -296,11 +296,13 @@ ELU is exactly:
 ELU(x) = max(x, 0) + exp(min(x, 0)) - 1
 ```
 
-The native reference Softmax exponentiates each of the eight logits directly, sums them, and divides by the sum. It does not subtract the maximum logit. The pure C# backend uses the mathematically equivalent `Softmax(x - max(x))` formulation after long-running closed-loop tests demonstrated float overflow in the direct form. Golden-vector parity tests remain mandatory.
+The deployed ONNX uses its Softmax operator for the same eight gating logits. This avoids the
+overflow failure seen when the legacy scalar formula directly exponentiates large logits while
+preserving the normalized gating definition.
 
 ## Buffer names, counts, and storage order
 
-`BasketballModel.asset` stores 58 named buffers:
+The original source `BasketballModel.asset` stored 58 named buffers:
 
 - Six gating buffers: `wc000_w`, `wc000_b`, `wc010_w`, `wc010_b`, `wc020_w`, `wc020_b`.
 - Forty-eight main expert buffers: for each expert `0..7`, `wc10e_w/b`, `wc11e_w/b`, and `wc12e_w/b` using the source naming convention.
@@ -317,17 +319,19 @@ Important sizes:
 | Main expert layer 1 weights/bias | `512 x 512`, `512` |
 | Main expert layer 2 weights/bias | `588 x 512`, `588` |
 
-The original loader assigns `buffer[row * cols + col]` to matrix `(row, col)`. The compatibility backend must therefore interpret serialized arrays as row-major logical matrices even if an optimized backend later transposes or packs them internally.
+The original loader assigns `buffer[row * cols + col]` to matrix `(row, col)`. This storage order
+was preserved when the deployed ONNX was generated.
 
-The separately extracted `DeepLearning/Weights/BasketballController/*.bin` files are Git LFS pointer files in this archive, but their declared sizes agree with the embedded asset. Runtime import must use the complete float values embedded in `BasketballModel.asset`, not the pointer text.
+The separately extracted `DeepLearning/Weights/BasketballController/*.bin` files in the upstream
+archive are Git LFS pointer files. They are not runtime inputs.
 
-## Sentis batch packaging
+## GPU batch packaging
 
-`Tools/Onnx/export_basketball_onnx.py` is an offline authoring step that reads the complete
-`BasketballModel.Legacy.asset`. It validates all 58 names and lengths, then emits
-`Assets/AI4AnimationRemake/Resources/Models/BasketballMoEBatch3.onnx` for Unity Sentis 2.6.1.
-There is no Python Runtime dependency and no retraining, quantization, channel reordering or
-model approximation.
+`Assets/AI4AnimationRemake/Resources/Models/BasketballMoEBatch3.onnx` is the sole deployed model
+asset for Unity Inference Engine 2.6.1. It was generated offline from all 58 complete source
+buffers without retraining, quantization, channel reordering or model approximation. The raw
+serialized model and one-time conversion tool have been removed from the production project;
+Python is not a runtime dependency.
 
 The imported graph has a fixed input shape `[3,864]`. Each row independently executes the same
 normalization, 130-feature gating network, Softmax, dynamic eight-expert blending, ELU layers and
@@ -340,9 +344,8 @@ row[588..595] = the same eight gating weights, for HUD/debug telemetry only
 
 Only the first 588 values enter `BasketballOutputDecoder`; the extra eight values never become
 recurrent model channels. The packed layout exists solely to perform one GPU readback instead of
-two. `BasketballSentisBatchTests` compares three deterministic Sentis rows against three
-independent Reference evaluations on CPU and GPUCompute; execution of those tests remains an
-owner-run validation step.
+two. `BasketballSentisBatchTests` validates the fixed names/shapes and executes deterministic
+finite-output checks through `BackendType.GPUCompute`; execution remains an owner-run step.
 
 ## Closed-loop state contract
 
@@ -361,17 +364,11 @@ Before inference, the feature builder reads current root, pose, velocities, ball
 
 The resulting state becomes the next tick's input. Tests must therefore include multi-tick replay, not only one isolated network evaluation.
 
-## Required numerical validation
+## Required deployment validation
 
-Before declaring the reference backend complete:
-
-- Validate all 58 buffer names and element counts.
-- Compute and record deterministic hashes for imported float bytes.
-- Compare normalization and renormalization against the legacy formula.
-- Compare gating logits, Softmax weights, and verify their sum.
-- Compare all six blended matrices/biases for a known input.
-- Compare hidden layers, normalized output, and final 588 outputs.
-- Run at least 300 recurrent ticks from an identical captured state and report drift.
-- Keep tolerances explicit. Visual similarity alone is not numerical parity.
-
-No golden-vector parity result has been claimed yet; this is the next Phase 1 validation task.
+- Reject any model whose input/output names or `[3,864] -> [3,596]` shapes differ.
+- Reject any non-finite readback before it can enter recurrent state.
+- Run recurrent 30 Hz movement, dribble, shoot, pass/catch and steal scenarios after a model
+  replacement; isolated finite output is not enough for a closed-loop model.
+- Treat `SENTIS GPU ERROR` as a hard failure. There is no alternate numerical backend.
+- Keep the original archive outside the Unity project as the immutable provenance reference.

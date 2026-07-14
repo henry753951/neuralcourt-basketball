@@ -11,9 +11,8 @@ at runtime.
 - Open `Assets/Scenes/BasketballDemo.unity`.
 - Enter Play Mode. The default profile advances neural simulation at the canonical 30 Hz while
   the rendered pose is interpolated between previous/current neural states.
-- Run tests from Test Runner or through MCP:
-  - `CrowdEyes.AI4Animation.Tests.EditMode`
-  - `CrowdEyes.AI4Animation.Tests.PlayMode`
+- Optional contract checks are in `CrowdEyes.AI4Animation.Tests.EditMode`. The GPU execution
+  check requires a machine with compute-shader support.
 
 ## Shared runtime settings
 
@@ -23,7 +22,7 @@ scheduler, orbit camera, application frame pacing, HUD sampling and realtime-sha
 `Neural Tick Rate = 30` is the Basketball 2020 reference. Values `20`, `15` and `10` are
 experimental scheduling modes; `Linear` or `SmoothStep` interpolates only rendered root, bones
 and ball presentation and never writes presentation state back into the recurrent model. Restart
-Play Mode after changing the backend or other startup settings.
+Play Mode after changing startup settings.
 
 ## Current keyboard and mouse input
 
@@ -57,35 +56,24 @@ The model, scene-local primitive character/court, and reference behavior come fr
 `2019.3.0f3`. The untouched source archive is kept outside this Unity project. Only the
 interactive demo's required data has been selectively brought into `Assets/`.
 
-The imported model contains the original 58 serialized float buffers. Its contract is
-`864 -> MoE -> 588`, with an 8-way gating network and eight dynamically blended experts.
-See `Docs/MODEL_IO_CONTRACT.md` for the exact channel order.
+The deployed ONNX contains the original pretrained MoE math and weights. Its contract is
+`864 -> MoE -> 588`, with an 8-way gating network and eight dynamically blended experts. The
+GPU batch graph packs eight telemetry-only gating values after the 588 model outputs, producing
+`[3,864] -> [3,596]`. The old serialized 58-buffer CPU model asset is not shipped in this
+runtime. See `Docs/MODEL_IO_CONTRACT.md` for the exact channel order.
 
-## Backends
+## GPU-only inference
 
-- `BasketballReferenceBackend`: pure C#, row-major, behavior-oriented implementation of the
-  original normalization, ELU, gating Softmax, expert blending, dense layers, and output
-  denormalization. It remains the default and the correctness oracle.
-- `BasketballBurstBackend`: Burst CPU implementation of the same 864-to-588 model contract. It
-  preserves normalization, gating, Softmax, expert blending, ELU and dense-layer order. The
-  three large expert-weight blends execute as parallel jobs, while the public evaluation call
-  still completes before decode so the closed-loop model gains no extra frame of latency. Agents
-  share one persistent native copy of immutable model data and keep recurrent/scratch state
-  separate.
-- `BasketballSentisBatchScheduler`: official Unity Sentis 2.6.1 `GPUCompute` path for the three
-  demo players. An offline exporter builds one fixed `[3,864] -> [3,596]` ONNX graph from the
-  original 58 buffers; each row contains the unchanged 588 neural outputs plus 8 telemetry-only
-  gating weights. On DX12, Sentis can use its DirectML-capable GPUCompute path. The scheduler
-  warms the worker before switching, allows only one recurrent tick in flight, polls readback
-  without blocking the camera frame, then commits all three independent agent states together.
-  Any initialization/schedule failure leaves all agents on the Burst fallback.
+`BasketballSentisBatchScheduler` is the only inference implementation. It uses the official
+Unity Inference Engine 2.6.1 `GPUCompute` worker for a fixed three-player batch. On DX12 the HUD
+reports `SENTIS DML BATCH 3`; other supported graphics APIs report `SENTIS GPU BATCH 3`.
+The scheduler warms the worker, allows only one recurrent tick in flight, polls readback without
+blocking the camera frame, and commits the three independent agent states together. `GPU INFER
+RTT` is the schedule-to-readback round trip; `INFERENCE` is CPU dispatch/readback bookkeeping.
 
-The shared `BasketballRuntimeSettings` profile currently selects
-`Inference Backend = SentisGpuBatch` for all three rigs.
-The UI Toolkit HUD reports `SENTIS DML BATCH 3` on DX12 after warm-up, `SENTIS GPU BATCH 3` on
-another GPUCompute graphics API, or `BURST CPU FALLBACK` if the official worker cannot start.
-`GPU INFER RTT` shows the schedule-to-readback round trip; the existing `INFERENCE` row remains
-CPU dispatch cost. Reference and Burst remain selectable for A/B comparison.
+There is no CPU/reference/Burst inference fallback. If the ONNX contract, GPU worker, scheduling,
+or readback fails, the neural simulation stops and the HUD/Console reports `SENTIS GPU ERROR`
+instead of silently changing numerical backends.
 
 ## Status
 
@@ -105,8 +93,7 @@ pass; they no longer receive Hold input merely because another player owns the b
 
 Not completed: AI path planning and defensive navigation, dedicated steal/tip animations,
 runtime allocation/profiler sign-off, broader 5/10-agent scheduling, and low-frequency quality
-acceptance. The Sentis batch implementation and its CPU/GPU parity tests are present, but—as
-requested—Runtime and Test Runner validation remain with the project owner.
+acceptance. Runtime and Test Runner validation remain with the project owner.
 
 See `Docs/PLAYER_AI_INTEGRATION.md` for the current control contract, the mapping from the
 original controller/series, and the recommended boundary for future player and team AI.

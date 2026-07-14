@@ -1,5 +1,9 @@
 # AI4Animation SIGGRAPH 2020 Basketball — Unity 6 Porting Plan
 
+> Historical implementation plan. As of 2026-07-15 the accepted production runtime is
+> GPUCompute-only; the temporary raw-model, pure-C# and Burst migration backends described in
+> Phase 1 have been removed.
+
 Last verified: 2026-07-13 (Asia/Taipei)
 
 ## Objective and invariants
@@ -97,9 +101,9 @@ This is an autoregressive loop. Any reordering, dropped channel, changed timeste
 ### Phase 1 — Reference remake
 
 1. Import only the interactive scene's required assets and preserve source attribution.
-2. Add a Unity 6 `BasketballModelAsset` representation that imports the original 58 buffers without changing values.
-3. Implement `IBasketballInferenceBackend` and an allocation-conscious pure C# reference backend.
-4. Add numerical tests for normalization, gating probabilities, expert blending, ELU, and final output.
+2. Historically import the original 58 buffers to verify conversion; do not ship this temporary asset.
+3. Convert the accepted model to the fixed three-player ONNX and deploy through GPUCompute only.
+4. Keep GPU model-name, shape, finite-output and closed-loop behavior checks.
 5. Port the exact feature feed and output read order before splitting behavior into higher-level modules.
 6. Port the canonical skeleton, player primitives, ball, court, and legacy-compatible IK.
 7. Establish explicit `Controlled`, `Held`, `Released`, `FreePhysics`, and `Reacquiring` ball states while reproducing original handoff conditions.
@@ -108,13 +112,14 @@ Reference acceptance gate:
 
 - Unity compilation succeeds with no new errors.
 - Model buffers pass count/hash validation.
-- Reference backend matches a trusted legacy/native inference vector within a documented tolerance.
+- Converted GPU model was behavior-accepted against the legacy demo before migration tooling was removed.
 - Play Mode runs at 30 neural ticks per second.
 - Idle, move, sprint, dribble, hold, shoot, catch/reacquire, and spin are exercised in Editor.
 - Ball-ground and hand-ball behavior are visually and numerically inspected.
 - Known differences are recorded rather than hidden.
 
-The old Eigen plugin may be used only to obtain a comparison baseline if it loads safely. It is a 69,120-byte Unity 2019-era Windows DLL with obsolete importer settings. A failure to load is a signal to proceed with the pure C# backend, not to spend the port on plugin repair.
+The old Eigen plugin is not shipped. It was used only as historical comparison context during
+the migration and has no Unity 6 runtime role.
 
 ### Phase 2 — Third-person camera and inputs
 
@@ -157,7 +162,7 @@ Order of work:
 2. Preallocate feature, output, pose, contact, phase, and expert blend buffers.
 3. Share model weights, normalization, skeleton metadata, and topology across agents.
 4. Add the required Profiler markers.
-5. Compare pure C# reference results with Burst/Jobs kernels before enabling optimized paths.
+5. Deploy the accepted fixed-batch ONNX through the official GPUCompute worker.
 6. Add quality tiers without changing Tier 0 behavior.
 
 Acceptance gate: stable Play Mode reports zero or near-zero GC allocation per frame, numerical parity for inference, and recorded 1-agent measurements.
@@ -187,8 +192,8 @@ Every major phase runs compile, Console review, Play Mode, and scripted/manual s
 
 - Phase 0 inspection and reference extraction: complete.
 - Dependency separation and model I/O contract: complete and documented.
-- Original model import and pure C# reference backend: complete. All 58 buffers pass a
-  semantic SHA-256 check and independent reference-vector tests.
+- Historical model import/conversion was completed; temporary CPU migration assets and tests
+  are no longer shipped. The fixed three-player ONNX is the production model representation.
 - Selective reference scene extraction: complete for the canonical player primitives,
   court/world primitives, ball, and simple URP materials. The legacy UI and post-processing
   stack were intentionally not imported.

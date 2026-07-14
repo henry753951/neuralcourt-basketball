@@ -50,7 +50,7 @@
                     <ui:Label text="PERFORMANCE" class="eyebrow" />
                     <ui:Label text="RUNTIME METRICS" class="card-title performance-title" />
                 </ui:VisualElement>
-                <ui:Label name="backend-label" text="REFERENCE C#" class="mono-label" />
+                <ui:Label name="backend-label" text="SENTIS GPU INITIALIZING" class="mono-label" />
             </ui:VisualElement>
             <ui:VisualElement class="performance-row"><ui:Label text="FPS" class="performance-name" /><ui:Label name="fps-label" text="--" class="performance-value performance-primary" /></ui:VisualElement>
             <ui:VisualElement class="performance-row"><ui:Label text="FRAME" class="performance-name" /><ui:Label name="frame-time-label" text="--" class="performance-value" /></ui:VisualElement>

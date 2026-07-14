@@ -16,10 +16,10 @@ Keyboard / mouse + Tab player selection
        -> one BasketballIntent override per player
   -> BasketballKeyboardMouseInputProvider
   -> BasketballIntent
-  -> BasketballNeuralController.ApplyControl               fixed 30 Hz
+  -> BasketballNeuralController.ApplyControl               shared neural tick
   -> BasketballAgentState recurrent series
-  -> BasketballFeatureBuilder                              864 floats
-  -> BasketballReferenceBackend                            original 8-expert MoE
+  -> BasketballFeatureBuilder                              3 x 864 floats
+  -> BasketballSentisBatchScheduler                        GPUCompute 3-player MoE
   -> BasketballOutputDecoder                               588 floats
   -> previous/current BasketballPoseBuffer
   -> BasketballPoseApplicator + contact IK                 render frame
@@ -43,8 +43,9 @@ Every neural tick still follows the closed loop:
 5. Capture the new simulation pose. Render frames interpolate without feeding transforms back
    into simulation.
 
-The 30 Hz neural step is part of the model contract and must remain independent from the future
-AI decision rate.
+The 30 Hz neural step remains the reference model rate and must be independent from the future
+AI decision rate. Lower profile values are experimental and only alter scheduler cadence and
+render interpolation; they do not retime the model equations.
 
 ## Current match and team layer
 

@@ -18,7 +18,6 @@ MonoBehaviour:
   enableContactIK: 1
   enableDebugDraw: 0
   deterministicMode: 1
-  inferenceBackend: 2
   targetFrameRate: -1
   vSyncCount: 0
   mouseSensitivity: 0.12

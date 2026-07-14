@@ -14,7 +14,7 @@ namespace CrowdEyes.AI4Animation.Basketball
 
         public void Decode(BasketballAgentState state, ReadOnlySpan<float> output)
         {
-            if (output.Length != BasketballModelAsset.OutputFeatureCount)
+            if (output.Length != BasketballModelContract.OutputFeatureCount)
             {
                 throw new ArgumentException("Basketball output buffer must contain exactly 588 floats.", nameof(output));
             }

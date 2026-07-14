@@ -23,10 +23,9 @@ path, IK, UI, and debug visualization are the behavior baseline for subsequent p
   distance and Touch-before-Secure arbitration; it does not claim a learned poke animation.
 - Unselected players intentionally receive Stand rather than Hold. Only an intended receiver in
   `PassFlight` receives catch guidance; this prevents a remote ball from pulling idle hands/body.
-- The three-player demo now has an experimental official Sentis 2.6.1 GPUCompute batch path.
-  It is generated from the original weights and retains one 30 Hz closed-loop state per player,
-  but owner-run numeric, visual and performance acceptance is still pending. Burst remains its
-  all-player fallback.
+- The three-player demo now uses the official Unity Inference Engine 2.6.1 GPUCompute batch path
+  exclusively. It retains one 30 Hz closed-loop state per player. The Reference/Burst CPU
+  evaluators and fallback have been removed; GPU failure now stops simulation visibly.
 - Neural scheduling can now be selected from one shared profile. The 30 Hz mode remains the
   formal reference. Lower 20/15/10 Hz modes use render-time pose interpolation but do not retime
   the 2020 model's trained equations, so they remain experimental until dribble, contact, phase,
@@ -37,10 +36,8 @@ path, IK, UI, and debug visualization are the behavior baseline for subsequent p
 
 ## Intentional differences
 
-- The Unity 2019 Eigen native plugin is replaced by a pure C# reference backend. Tests lock the
-  imported model bytes semantically and compare known outputs, but a larger native-vs-C# replay
-  corpus is still desirable.
-- Softmax uses the mathematically equivalent max-shift formulation to prevent `exp` overflow.
+- The Unity 2019 Eigen native plugin and later pure-C#/Burst compatibility evaluators are not
+  shipped. The deployed ONNX is the sole runtime model representation.
 - Legacy Post Processing Stack v2 was not imported. The reference scene uses URP materials and a
   clean Unity 6 camera.
 - Cinemachine is not installed; the Phase 2 orbit camera is a small project-owned component to

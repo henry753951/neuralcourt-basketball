@@ -566,14 +566,6 @@ namespace CrowdEyes.AI4Animation.Basketball
             {
                 return;
             }
-            for (int index = 0; index < players.Length; index++)
-            {
-                if (players[index] == null || players[index].Controller == null ||
-                    !players[index].Controller.WantsSentisBatch)
-                {
-                    return;
-                }
-            }
 
             sentisBatchScheduler = sentisBatchScheduler != null
                 ? sentisBatchScheduler

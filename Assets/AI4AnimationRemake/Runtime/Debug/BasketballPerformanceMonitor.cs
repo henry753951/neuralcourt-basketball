@@ -54,32 +54,34 @@ namespace CrowdEyes.AI4Animation.Basketball
             {
                 return;
             }
-
-            mainThreadRecorder = ProfilerRecorder.StartNew(
-                ProfilerCategory.Internal, "Main Thread", SampleCapacity);
-            gcAllocatedRecorder = ProfilerRecorder.StartNew(
-                ProfilerCategory.Memory, "GC Allocated In Frame", SampleCapacity);
-            controlRecorder = StartScriptRecorder("Basketball.Control");
-            featureRecorder = StartScriptRecorder("Basketball.BuildFeatures");
-            inferenceRecorder = StartScriptRecorder("Basketball.Inference");
-            decodeRecorder = StartScriptRecorder("Basketball.Decode");
-            interpolateRecorder = StartScriptRecorder("Basketball.Interpolate");
-            applyPoseRecorder = StartScriptRecorder("Basketball.ApplyPose");
-            ballRecorder = StartScriptRecorder("Basketball.Ball");
-            contactRecorder = StartScriptRecorder("Basketball.Contact");
-            ikRecorder = StartScriptRecorder("Basketball.IK");
-            cameraRecorder = StartScriptRecorder("Basketball.Camera");
-            frameTimingCaptureCountdown = 0;
-            active = true;
+            try
+            {
+                mainThreadRecorder = ProfilerRecorder.StartNew(
+                    ProfilerCategory.Internal, "Main Thread", SampleCapacity);
+                gcAllocatedRecorder = ProfilerRecorder.StartNew(
+                    ProfilerCategory.Memory, "GC Allocated In Frame", SampleCapacity);
+                controlRecorder = StartScriptRecorder("Basketball.Control");
+                featureRecorder = StartScriptRecorder("Basketball.BuildFeatures");
+                inferenceRecorder = StartScriptRecorder("Basketball.Inference");
+                decodeRecorder = StartScriptRecorder("Basketball.Decode");
+                interpolateRecorder = StartScriptRecorder("Basketball.Interpolate");
+                applyPoseRecorder = StartScriptRecorder("Basketball.ApplyPose");
+                ballRecorder = StartScriptRecorder("Basketball.Ball");
+                contactRecorder = StartScriptRecorder("Basketball.Contact");
+                ikRecorder = StartScriptRecorder("Basketball.IK");
+                cameraRecorder = StartScriptRecorder("Basketball.Camera");
+                frameTimingCaptureCountdown = 0;
+                active = true;
+            }
+            catch
+            {
+                Stop();
+                throw;
+            }
         }
 
         public void Stop()
         {
-            if (!active)
-            {
-                return;
-            }
-
             DisposeRecorder(ref mainThreadRecorder);
             DisposeRecorder(ref gcAllocatedRecorder);
             DisposeRecorder(ref controlRecorder);

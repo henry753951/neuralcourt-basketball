@@ -8304,7 +8304,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 133a0b865a18461428eb40348290eaf3, type: 3}
   m_Name: 
   m_EditorClassIdentifier: CrowdEyes.AI4Animation.Runtime::CrowdEyes.AI4Animation.Basketball.BasketballReferenceRig
-  model: {fileID: 11400000, guid: 02b753f517c31984097127db59de65ba, type: 2}
   skeleton: {fileID: 473741063}
   ball: {fileID: 807392544}
 --- !u!114 &473741063
@@ -13892,7 +13891,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 133a0b865a18461428eb40348290eaf3, type: 3}
   m_Name: 
   m_EditorClassIdentifier: CrowdEyes.AI4Animation.Runtime::CrowdEyes.AI4Animation.Basketball.BasketballReferenceRig
-  model: {fileID: 11400000, guid: 02b753f517c31984097127db59de65ba, type: 2}
   skeleton: {fileID: 797245735}
   ball: {fileID: 807392544}
 --- !u!114 &797245735
@@ -29116,7 +29114,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 133a0b865a18461428eb40348290eaf3, type: 3}
   m_Name: 
   m_EditorClassIdentifier: CrowdEyes.AI4Animation.Runtime::CrowdEyes.AI4Animation.Basketball.BasketballReferenceRig
-  model: {fileID: 11400000, guid: 02b753f517c31984097127db59de65ba, type: 2}
   skeleton: {fileID: 1635557095}
   ball: {fileID: 807392544}
 --- !u!114 &1635557095

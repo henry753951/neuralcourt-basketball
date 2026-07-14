@@ -40,7 +40,7 @@ namespace CrowdEyes.AI4Animation.Tests
         public void FeatureBuilder_WritesExactOriginalLayout()
         {
             BasketballAgentState state = CreateIdentityState();
-            var input = new float[BasketballModelAsset.InputFeatureCount];
+            var input = new float[BasketballModelContract.InputFeatureCount];
 
             new BasketballFeatureBuilder().Build(state, input);
 
@@ -72,7 +72,7 @@ namespace CrowdEyes.AI4Animation.Tests
                 rival.BonePositions[bone] = 0.5f * Vector3.right;
             }
 
-            var input = new float[BasketballModelAsset.InputFeatureCount];
+            var input = new float[BasketballModelContract.InputFeatureCount];
             new BasketballFeatureBuilder().Build(state, input);
 
             Assert.That(input[617], Is.EqualTo(1f));
@@ -94,7 +94,7 @@ namespace CrowdEyes.AI4Animation.Tests
             BasketballAgentState state = CreateIdentityState();
             Vector3[] bonePositions = state.BonePositions;
             Quaternion[] boneRotations = state.BoneRotations;
-            var output = new float[BasketballModelAsset.OutputFeatureCount];
+            var output = new float[BasketballModelContract.OutputFeatureCount];
 
             new BasketballOutputDecoder().Decode(state, output);
 

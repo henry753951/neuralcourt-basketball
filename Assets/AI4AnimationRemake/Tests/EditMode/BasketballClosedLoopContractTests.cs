@@ -56,6 +56,39 @@ namespace CrowdEyes.AI4Animation.Tests
         }
 
         [Test]
+        public void FeatureBuilder_ReconstructsLegacyRivalBlockWithoutChangingLayout()
+        {
+            BasketballAgentState state = CreateIdentityState();
+            BasketballAgentState rival = CreateIdentityState();
+            state.Rival = rival;
+            for (int sample = 0; sample < BasketballAgentState.SampleCount; sample++)
+            {
+                rival.RootPositions[sample] = Vector3.right;
+                rival.RootRotations[sample] = Quaternion.identity;
+                rival.RootVelocities[sample] = 2f * Vector3.forward;
+            }
+            for (int bone = 0; bone < BasketballSkeleton.BoneCount; bone++)
+            {
+                rival.BonePositions[bone] = 0.5f * Vector3.right;
+            }
+
+            var input = new float[BasketballModelAsset.InputFeatureCount];
+            new BasketballFeatureBuilder().Build(state, input);
+
+            Assert.That(input[617], Is.EqualTo(1f));
+            Assert.That(input[630], Is.EqualTo(4f).Within(1e-5f));
+            Assert.That(input[631], Is.EqualTo(0f).Within(1e-5f));
+            Assert.That(input[632], Is.EqualTo(0f).Within(1e-5f));
+            Assert.That(input[633], Is.EqualTo(1f).Within(1e-5f));
+            Assert.That(input[634], Is.EqualTo(0f).Within(1e-5f));
+            Assert.That(input[635], Is.EqualTo(2f).Within(1e-5f));
+            for (int index = 708; index <= 733; index++)
+            {
+                Assert.That(input[index], Is.EqualTo(0.5f).Within(1e-5f));
+            }
+        }
+
+        [Test]
         public void OutputDecoder_ConsumesExactContractWithoutAllocatingStateArrays()
         {
             BasketballAgentState state = CreateIdentityState();

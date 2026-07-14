@@ -49,7 +49,16 @@ namespace CrowdEyes.AI4Animation.Basketball
                 return;
             }
 
-            transform.SetPositionAndRotation(position, rotation);
+            if (state == BasketballBallAuthorityState.Reacquiring)
+            {
+                transform.SetPositionAndRotation(
+                    Vector3.Lerp(transform.position, position, 0.35f),
+                    Quaternion.Slerp(transform.rotation, rotation, 0.35f));
+            }
+            else
+            {
+                transform.SetPositionAndRotation(position, rotation);
+            }
             controlledVelocity = velocity;
         }
 
@@ -60,6 +69,16 @@ namespace CrowdEyes.AI4Animation.Basketball
             controlledVelocity = linearVelocity;
             Body.linearVelocity = linearVelocity;
             Body.angularVelocity = angularVelocity;
+        }
+
+        public void ReleaseFromPose(
+            Vector3 position,
+            Quaternion rotation,
+            Vector3 linearVelocity,
+            Vector3 angularVelocity)
+        {
+            transform.SetPositionAndRotation(position, rotation);
+            Release(linearVelocity, angularVelocity);
         }
 
         public void BeginReacquire()

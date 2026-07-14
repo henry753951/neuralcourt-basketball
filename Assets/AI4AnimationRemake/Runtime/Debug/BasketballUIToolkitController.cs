@@ -41,6 +41,7 @@ namespace CrowdEyes.AI4Animation.Basketball
         private Label ballState;
         private Label tickLabel;
         private Label controlState;
+        private Label modeLabel;
         private float refreshTimer;
         private bool isBound;
 
@@ -112,6 +113,7 @@ namespace CrowdEyes.AI4Animation.Basketball
             ballState = root.Q<Label>("ball-state");
             tickLabel = root.Q<Label>("tick-label");
             controlState = root.Q<Label>("control-state");
+            modeLabel = root.Q<Label>("mode-label");
 
             if (telemetryCard == null || expertCard == null || controlCard == null ||
                 controlDisk == null || hudToggle == null || debugToggle == null ||
@@ -365,6 +367,30 @@ namespace CrowdEyes.AI4Animation.Basketball
             visualizer = debugVisualizer;
             styleSheet = hudStyleSheet;
             telemetryVisible = true;
+        }
+
+        public void SetSources(
+            BasketballNeuralController neuralController,
+            BasketballKeyboardMouseInputProvider provider,
+            BasketballDebugVisualizer debugVisualizer)
+        {
+            controller = neuralController;
+            inputProvider = provider;
+            visualizer = debugVisualizer;
+            refreshTimer = RefreshInterval;
+            if (isBound)
+            {
+                controlDisk.MarkDirtyRepaint();
+                ApplyVisibility();
+            }
+        }
+
+        public void SetMatchStatus(string value)
+        {
+            if (modeLabel != null)
+            {
+                modeLabel.text = value;
+            }
         }
     }
 }

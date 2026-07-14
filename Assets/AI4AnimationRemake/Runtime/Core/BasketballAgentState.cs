@@ -38,6 +38,11 @@ namespace CrowdEyes.AI4Animation.Basketball
         public readonly Quaternion[] BoneRotations = new Quaternion[BasketballSkeleton.BoneCount];
         public readonly Vector3[] BoneVelocities = new Vector3[BasketballSkeleton.BoneCount];
 
+        // Runtime-only interaction reference. It deliberately points at another
+        // agent's closed-loop state so the 117 legacy Rival input features can be
+        // rebuilt without changing the 864-float model contract.
+        public BasketballAgentState Rival;
+
         public bool Carrier = true;
         public bool HoldIntent;
         public bool ShootIntent;
@@ -79,6 +84,7 @@ namespace CrowdEyes.AI4Animation.Basketball
             }
 
             Carrier = true;
+            Rival = null;
             TickCount = 0;
         }
 

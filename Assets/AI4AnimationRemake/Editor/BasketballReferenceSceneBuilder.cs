@@ -26,6 +26,9 @@ namespace CrowdEyes.AI4Animation.Editor
         private const string TemporaryScenePath =
             "Assets/Scenes/BasketballDemo.Building.unity";
 
+        private const string TemporarySceneDataPath =
+            "Assets/Scenes/BasketballDemo.Building";
+
         private const string ModelPath =
             "Assets/AI4AnimationRemake/Models/BasketballModel.asset";
 
@@ -71,14 +74,22 @@ namespace CrowdEyes.AI4Animation.Editor
                 SceneManager.SetActiveScene(targetScene);
 
                 GameObject world = CloneRoot(sourceScene, targetScene, "World");
-                GameObject player = CloneRoot(sourceScene, targetScene, "Player");
+                GameObject[] playerObjects =
+                {
+                    CloneRoot(sourceScene, targetScene, "Player"),
+                    CloneRoot(sourceScene, targetScene, "Player"),
+                    CloneRoot(sourceScene, targetScene, "Player")
+                };
                 GameObject ball = CloneRoot(sourceScene, targetScene, "Ball");
                 GameObject cameraRoot = CloneRoot(sourceScene, targetScene, "Camera");
                 GameObject canvas = CloneRoot(sourceScene, targetScene, "Canvas");
                 GameObject eventSystemRoot = CloneRoot(sourceScene, targetScene, "EventSystem");
 
                 RemoveMissingScripts(world);
-                RemoveMissingScripts(player);
+                for (int index = 0; index < playerObjects.Length; index++)
+                {
+                    RemoveMissingScripts(playerObjects[index]);
+                }
                 RemoveMissingScripts(ball);
                 RemoveMissingScripts(cameraRoot);
                 RemoveMissingScripts(canvas);
@@ -107,35 +118,18 @@ namespace CrowdEyes.AI4Animation.Editor
                     new Color(0.85490197f, 0.64705884f, 0.1254902f, 1f),
                     0f,
                     0.5f);
+                Material opponent = GetOrCreateMaterial(
+                    "ReferenceOpponent.mat",
+                    new Color(0.24f, 0.045f, 0.055f, 1f),
+                    0.1f,
+                    0.3f);
 
-                AssignMaterial(player, black);
+                AssignMaterial(playerObjects[0], black);
+                AssignMaterial(playerObjects[1], black);
+                AssignMaterial(playerObjects[2], opponent);
                 AssignWorldMaterials(world, grey, court);
                 AssignMaterial(ball, gold);
                 ConfigureBallVisual(ball, gold, 0.125f);
-
-                BasketballSkeleton skeleton = player.GetComponent<BasketballSkeleton>();
-                if (skeleton == null)
-                {
-                    skeleton = player.AddComponent<BasketballSkeleton>();
-                }
-
-                var bones = new Transform[BasketballSkeleton.BoneCount];
-                Transform[] transforms = player.GetComponentsInChildren<Transform>(true);
-                for (int boneIndex = 0; boneIndex < BasketballSkeleton.BoneCount; boneIndex++)
-                {
-                    bones[boneIndex] = FindByName(transforms, BasketballSkeleton.CanonicalNames[boneIndex]);
-                    if (bones[boneIndex] == null)
-                    {
-                        throw new InvalidOperationException(
-                            $"Legacy scene is missing canonical bone '{BasketballSkeleton.CanonicalNames[boneIndex]}'.");
-                    }
-                }
-
-                skeleton.Configure(bones);
-                if (!skeleton.Validate(out string skeletonReason))
-                {
-                    throw new InvalidOperationException(skeletonReason);
-                }
 
                 BasketballBallController ballController = ball.GetComponent<BasketballBallController>();
                 if (ballController == null)
@@ -156,20 +150,6 @@ namespace CrowdEyes.AI4Animation.Editor
                     ballCollider.sharedMaterial = ballMaterial;
                 }
 
-                BasketballReferenceRig rig = player.GetComponent<BasketballReferenceRig>();
-                if (rig == null)
-                {
-                    rig = player.AddComponent<BasketballReferenceRig>();
-                }
-
-                // A Single-scene switch may unload an otherwise unreferenced asset.
-                model = AssetDatabase.LoadAssetAtPath<BasketballModelAsset>(ModelPath);
-                rig.Configure(model, skeleton, ballController);
-                if (!rig.Validate(out string rigReason))
-                {
-                    throw new InvalidOperationException(rigReason);
-                }
-
                 Camera camera = cameraRoot.GetComponentInChildren<Camera>(true);
                 if (camera == null)
                 {
@@ -181,7 +161,7 @@ namespace CrowdEyes.AI4Animation.Editor
                 {
                     legacyCamera = camera.gameObject.AddComponent<BasketballLegacyCamera>();
                 }
-                legacyCamera.Configure(player.transform);
+                legacyCamera.Configure(playerObjects[0].transform);
                 legacyCamera.enabled = false;
                 ThirdPersonOrbitCamera orbitCamera =
                     camera.gameObject.GetComponent<ThirdPersonOrbitCamera>();
@@ -189,46 +169,58 @@ namespace CrowdEyes.AI4Animation.Editor
                 {
                     orbitCamera = camera.gameObject.AddComponent<ThirdPersonOrbitCamera>();
                 }
-                orbitCamera.Configure(player.transform);
+                orbitCamera.Configure(playerObjects[0].transform);
                 orbitCamera.enabled = true;
 
-                BasketballKeyboardMouseInputProvider inputProvider =
-                    player.GetComponent<BasketballKeyboardMouseInputProvider>();
-                if (inputProvider == null)
+                Vector3 basePlayerPosition = playerObjects[0].transform.position;
+                Vector3[] playerOffsets =
                 {
-                    inputProvider = player.AddComponent<BasketballKeyboardMouseInputProvider>();
+                    Vector3.zero,
+                    new Vector3(-3f, 0f, 2.5f),
+                    new Vector3(3f, 0f, 2.5f)
+                };
+                int[] teams = { 0, 0, 1 };
+                var members = new BasketballTeamMember[playerObjects.Length];
+                // Switching scenes can unload an otherwise unreferenced ScriptableObject.
+                // Reload once here, then share the same immutable model asset across all agents.
+                model = AssetDatabase.LoadAssetAtPath<BasketballModelAsset>(ModelPath);
+                if (model == null)
+                {
+                    throw new InvalidOperationException($"Missing model at {ModelPath}.");
                 }
-                inputProvider.SetMode(BasketballKeyboardMouseInputProvider.InputMode.Keyboard);
-                BasketballNeuralController neuralController =
-                    player.GetComponent<BasketballNeuralController>();
-                if (neuralController == null)
+                for (int index = 0; index < playerObjects.Length; index++)
                 {
-                    neuralController = player.AddComponent<BasketballNeuralController>();
-                }
-                neuralController.Configure(rig, inputProvider, camera);
-
-                LineRenderer lineRenderer = player.GetComponent<LineRenderer>();
-                if (lineRenderer == null)
-                {
-                    lineRenderer = player.AddComponent<LineRenderer>();
-                }
-                lineRenderer.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
-                lineRenderer.receiveShadows = false;
-                BasketballDebugVisualizer visualizer =
-                    player.GetComponent<BasketballDebugVisualizer>();
-                if (visualizer == null)
-                {
-                    visualizer = player.AddComponent<BasketballDebugVisualizer>();
-                }
-                visualizer.Configure(neuralController);
-
-                BasketballDebugHUD legacyHud = player.GetComponent<BasketballDebugHUD>();
-                if (legacyHud != null)
-                {
-                    Object.DestroyImmediate(legacyHud);
+                    GameObject player = playerObjects[index];
+                    player.name = $"Player {index + 1}";
+                    player.transform.position = basePlayerPosition + playerOffsets[index];
+                    members[index] = ConfigurePlayer(
+                        player,
+                        index,
+                        teams[index],
+                        model,
+                        ballController,
+                        camera);
                 }
 
-                ConfigureUIToolkit(uiRoot, neuralController, inputProvider, visualizer);
+                BasketballUIToolkitController uiController = ConfigureUIToolkit(
+                    uiRoot,
+                    members[0].Controller,
+                    members[0].InputProvider,
+                    members[0].Visualizer);
+                GameObject matchRoot = new("BasketballMatch");
+                SceneManager.MoveGameObjectToScene(matchRoot, targetScene);
+                BasketballPossessionManager possessionManager =
+                    matchRoot.AddComponent<BasketballPossessionManager>();
+                possessionManager.Configure(members, ballController);
+                BasketballMatchController matchController =
+                    matchRoot.AddComponent<BasketballMatchController>();
+                matchController.Configure(
+                    members,
+                    ballController,
+                    possessionManager,
+                    camera,
+                    orbitCamera,
+                    uiController);
                 ConfigureEventSystem(eventSystemRoot);
 
                 EditorSceneManager.MarkSceneDirty(targetScene);
@@ -246,8 +238,8 @@ namespace CrowdEyes.AI4Animation.Editor
                 AssetDatabase.DeleteAsset(TemporaryScenePath);
 
                 Debug.Log(
-                    $"Built {OutputScenePath}: third-person orbit camera, UI Toolkit HUD, " +
-                    "debug visualization, 26-bone player, ball authority bridge, and original model asset.");
+                    $"Built {OutputScenePath}: three 26-bone neural players, two teams, shared-ball " +
+                    "possession, teammate pass targeting, opponent steals, orbit camera, and UI Toolkit HUD.");
             }
             finally
             {
@@ -255,7 +247,115 @@ namespace CrowdEyes.AI4Animation.Editor
                 {
                     EditorSceneManager.CloseScene(sourceScene, removeScene: true);
                 }
+                AssetDatabase.DeleteAsset(TemporaryScenePath);
+                if (AssetDatabase.IsValidFolder(TemporarySceneDataPath))
+                {
+                    AssetDatabase.DeleteAsset(TemporarySceneDataPath);
+                }
             }
+        }
+
+        private static BasketballTeamMember ConfigurePlayer(
+            GameObject player,
+            int playerIndex,
+            int teamId,
+            BasketballModelAsset model,
+            BasketballBallController ballController,
+            Camera camera)
+        {
+            BasketballSkeleton skeleton = player.GetComponent<BasketballSkeleton>();
+            if (skeleton == null)
+            {
+                skeleton = player.AddComponent<BasketballSkeleton>();
+            }
+
+            var bones = new Transform[BasketballSkeleton.BoneCount];
+            Transform[] transforms = player.GetComponentsInChildren<Transform>(true);
+            for (int boneIndex = 0; boneIndex < BasketballSkeleton.BoneCount; boneIndex++)
+            {
+                bones[boneIndex] = FindByName(
+                    transforms,
+                    BasketballSkeleton.CanonicalNames[boneIndex]);
+                if (bones[boneIndex] == null)
+                {
+                    throw new InvalidOperationException(
+                        $"Player {playerIndex + 1} is missing canonical bone " +
+                        $"'{BasketballSkeleton.CanonicalNames[boneIndex]}'.");
+                }
+            }
+            skeleton.Configure(bones);
+            if (!skeleton.Validate(out string skeletonReason))
+            {
+                throw new InvalidOperationException(skeletonReason);
+            }
+
+            BasketballReferenceRig rig = player.GetComponent<BasketballReferenceRig>();
+            if (rig == null)
+            {
+                rig = player.AddComponent<BasketballReferenceRig>();
+            }
+            rig.Configure(model, skeleton, ballController);
+            if (!rig.Validate(out string rigReason))
+            {
+                throw new InvalidOperationException(rigReason);
+            }
+
+            BasketballKeyboardMouseInputProvider inputProvider =
+                player.GetComponent<BasketballKeyboardMouseInputProvider>();
+            if (inputProvider == null)
+            {
+                inputProvider = player.AddComponent<BasketballKeyboardMouseInputProvider>();
+            }
+            inputProvider.SetMode(BasketballKeyboardMouseInputProvider.InputMode.Keyboard);
+
+            BasketballNeuralController neuralController =
+                player.GetComponent<BasketballNeuralController>();
+            if (neuralController == null)
+            {
+                neuralController = player.AddComponent<BasketballNeuralController>();
+            }
+            neuralController.Configure(rig, inputProvider, camera);
+
+            LineRenderer lineRenderer = player.GetComponent<LineRenderer>();
+            if (lineRenderer == null)
+            {
+                lineRenderer = player.AddComponent<LineRenderer>();
+            }
+            lineRenderer.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+            lineRenderer.receiveShadows = false;
+            BasketballDebugVisualizer visualizer =
+                player.GetComponent<BasketballDebugVisualizer>();
+            if (visualizer == null)
+            {
+                visualizer = player.AddComponent<BasketballDebugVisualizer>();
+            }
+            visualizer.Configure(neuralController);
+
+            BasketballDebugHUD legacyHud = player.GetComponent<BasketballDebugHUD>();
+            if (legacyHud != null)
+            {
+                Object.DestroyImmediate(legacyHud);
+            }
+
+            BasketballTargetIndicator indicator =
+                player.GetComponent<BasketballTargetIndicator>();
+            if (indicator == null)
+            {
+                indicator = player.AddComponent<BasketballTargetIndicator>();
+            }
+            BasketballTeamMember member = player.GetComponent<BasketballTeamMember>();
+            if (member == null)
+            {
+                member = player.AddComponent<BasketballTeamMember>();
+            }
+            member.Configure(
+                playerIndex,
+                teamId,
+                neuralController,
+                inputProvider,
+                visualizer,
+                indicator);
+            return member;
         }
 
         [InitializeOnLoadMethod]
@@ -441,7 +541,7 @@ namespace CrowdEyes.AI4Animation.Editor
             AssetDatabase.CreateFolder(parent, name);
         }
 
-        private static void ConfigureUIToolkit(
+        private static BasketballUIToolkitController ConfigureUIToolkit(
             GameObject uiRoot,
             BasketballNeuralController neuralController,
             BasketballKeyboardMouseInputProvider inputProvider,
@@ -472,6 +572,7 @@ namespace CrowdEyes.AI4Animation.Editor
             BasketballUIToolkitController uiController =
                 uiRoot.AddComponent<BasketballUIToolkitController>();
             uiController.Configure(neuralController, inputProvider, visualizer, styleSheet);
+            return uiController;
         }
 
         private static void ConfigureEventSystem(GameObject eventSystemRoot)

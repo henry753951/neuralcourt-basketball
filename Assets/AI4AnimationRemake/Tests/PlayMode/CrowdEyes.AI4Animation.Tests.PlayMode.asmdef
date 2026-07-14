@@ -2,7 +2,8 @@
   "name": "CrowdEyes.AI4Animation.Tests.PlayMode",
   "rootNamespace": "CrowdEyes.AI4Animation.Tests",
   "references": [
-    "CrowdEyes.AI4Animation.Runtime"
+    "CrowdEyes.AI4Animation.Runtime",
+    "Unity.InputSystem"
   ],
   "includePlatforms": [],
   "excludePlatforms": [],

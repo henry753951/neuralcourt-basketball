@@ -184,6 +184,20 @@ namespace CrowdEyes.AI4Animation.Basketball
             desiredPitch = Mathf.Clamp(recenterPitch, minimumPitch, maximumPitch);
         }
 
+        public void SetTarget(Transform followTarget)
+        {
+            if (target == followTarget)
+            {
+                return;
+            }
+            target = followTarget;
+            positionVelocity = Vector3.zero;
+            if (!initialized && target != null)
+            {
+                InitializeFromCurrentPose();
+            }
+        }
+
         public void SetHeading(float yaw, bool snap)
         {
             desiredYaw = yaw;

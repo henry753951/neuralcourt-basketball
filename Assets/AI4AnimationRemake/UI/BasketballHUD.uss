@@ -148,7 +148,7 @@
 }
 
 .mode-pill {
-    min-width: 142px;
+    min-width: 230px;
     justify-content: center;
     background-color: rgba(66, 184, 255, 0.08);
     border-top-color: rgba(66, 184, 255, 0.25);

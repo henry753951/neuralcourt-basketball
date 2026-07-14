@@ -38,10 +38,15 @@ namespace CrowdEyes.AI4Animation.Basketball
         private float tickInterval;
         private int reacquireTicksRemaining;
         private bool initialized;
+        private IBasketballPossessionAuthority possessionAuthority;
+        private Transform passTarget;
+        private Vector3 passTargetOffset;
 
         public bool IsInitialized => initialized;
         public int SimulationTickCount => state?.TickCount ?? 0;
         public BasketballAgentState State => state;
+        public bool IsCarrier => state != null && state.Carrier;
+        public BasketballIntent CurrentIntent => intent;
         public BasketballBallAuthorityState BallState =>
             rig != null && rig.Ball != null ? rig.Ball.State : BasketballBallAuthorityState.FreePhysics;
 
@@ -91,7 +96,10 @@ namespace CrowdEyes.AI4Animation.Basketball
                 return;
             }
             float alpha = rig.RenderInterpolation ? accumulator / tickInterval : 1f;
-            poseApplicator.Apply(previousPose, currentPose, alpha);
+            bool applyBall = possessionAuthority != null
+                ? possessionAuthority.CanWriteBall(this)
+                : state.Carrier;
+            poseApplicator.Apply(previousPose, currentPose, alpha, applyBall);
         }
 
         public void Initialize()
@@ -156,6 +164,7 @@ namespace CrowdEyes.AI4Animation.Basketball
             twistCorrector.Correct(state);
             collisionResolver.Resolve(state);
             ProcessBallAfterDecode();
+            possessionAuthority?.ReportNeuralTick(this, BuildBallObservation());
             if (rig.EnableContactIK)
             {
                 poseApplicator.ApplySimulationState(state);
@@ -176,6 +185,61 @@ namespace CrowdEyes.AI4Animation.Basketball
             intent = default;
         }
 
+        public void SetPossessionAuthority(IBasketballPossessionAuthority authority)
+        {
+            possessionAuthority = authority;
+        }
+
+        public void SetRival(BasketballNeuralController rival)
+        {
+            state.Rival = rival != null ? rival.State : null;
+        }
+
+        public void SetCarrier(bool value, bool reacquire = true)
+        {
+            if (!initialized || state == null || rig == null || rig.Ball == null)
+            {
+                return;
+            }
+
+            state.Carrier = value;
+            reacquireTicksRemaining = 0;
+            if (value)
+            {
+                int pivot = BasketballAgentState.Pivot;
+                state.BallPositions[pivot] = rig.Ball.transform.position;
+                state.BallRotations[pivot] = rig.Ball.transform.rotation;
+                state.BallVelocities[pivot] = rig.Ball.Velocity;
+                if (possessionAuthority != null)
+                {
+                    // Ball authority belongs to the central possession manager.
+                }
+                else if (reacquire)
+                {
+                    reacquireTicksRemaining = 6;
+                    rig.Ball.BeginReacquire();
+                }
+                else
+                {
+                    rig.Ball.SetState(BasketballBallAuthorityState.Controlled);
+                }
+            }
+            previousPose.Capture(state);
+            currentPose.Capture(state);
+        }
+
+        public void SetPassTarget(Transform target, Vector3 localOffset)
+        {
+            passTarget = target;
+            passTargetOffset = localOffset;
+        }
+
+        public void ClearPassTarget()
+        {
+            passTarget = null;
+            passTargetOffset = Vector3.zero;
+        }
+
         public void CopyGatingWeights(float[] destination)
         {
             if (destination == null)
@@ -194,14 +258,29 @@ namespace CrowdEyes.AI4Animation.Basketball
         {
             using (ControlMarker.Auto())
             {
+                if (possessionAuthority != null)
+                {
+                    state.Carrier = possessionAuthority.HasBall(this);
+                }
                 state.ShiftControlSeries();
                 int pivot = BasketballAgentState.Pivot;
                 ProcessBallBeforeControl(pivot);
                 bool stand = intent.Move.magnitude < 0.25f;
-                bool hold = intent.Hold;
-                bool shoot = state.Carrier && intent.Shoot;
+                bool passControl = state.Carrier && intent.PassControl;
+                bool virtualStealHold = !state.Carrier && intent.Steal;
+                bool directHold = intent.Hold || virtualStealHold;
+                bool catchReadyStyle = !state.Carrier && intent.CatchReady;
+                bool modelHoldStyle = directHold || catchReadyStyle;
+                float holdAction = passControl
+                    ? Mathf.Clamp01(intent.PassHoldStyle)
+                    : modelHoldStyle ? 1f : 0f;
+                float shootAction = passControl
+                    ? Mathf.Clamp01(intent.PassShootStyle)
+                    : state.Carrier && intent.Shoot ? 1f : 0f;
+                bool hold = !passControl && directHold;
+                bool shoot = !passControl && state.Carrier && intent.Shoot;
                 bool moveActive = !stand && !intent.Shoot;
-                bool dribble = state.Carrier && !hold && !shoot;
+                bool dribble = state.Carrier && !hold && !shoot && !passControl;
                 float manualTurn = ShapeTurn(intent.Turn);
                 float turn = manualTurn;
                 float spin = moveActive ? intent.Spin : 0f;
@@ -216,8 +295,8 @@ namespace CrowdEyes.AI4Animation.Basketball
                     !state.Carrier && hold ||
                     state.Carrier && dribble && state.Pivots[pivot].y > 1.5f ||
                     state.Carrier && dribble && state.Momentums[pivot].y < 2.5f;
-                state.HoldIntent = hold;
-                state.ShootIntent = shoot;
+                state.HoldIntent = holdAction > 0.5f;
+                state.ShootIntent = shootAction > 0.1f;
                 state.BallHorizontalControl = horizontalControl;
                 state.BallHeightControl = heightControl;
                 state.BallSpeedControl = speedControl;
@@ -286,7 +365,29 @@ namespace CrowdEyes.AI4Animation.Basketball
                     !intent.IsGamepad && orbitCamera != null && orbitCamera.enabled;
                 Vector3 moveInput = new(intent.Move.x, 0f, intent.Move.y);
                 Vector3 move;
-                if (useOrbitAutoTurn)
+                bool useWorldControl = intent.UseWorldMove || intent.UseWorldFacing;
+                if (useWorldControl)
+                {
+                    Vector3 desiredWorldMove = intent.UseWorldMove
+                        ? Vector3.ProjectOnPlane(intent.WorldMove, Vector3.up)
+                        : Vector3.zero;
+                    Vector3 desiredFacing = intent.UseWorldFacing
+                        ? Vector3.ProjectOnPlane(intent.WorldFacing, Vector3.up)
+                        : desiredWorldMove;
+                    if (desiredFacing.sqrMagnitude > 1e-10f)
+                    {
+                        Vector3 actorForward = state.ActorRootRotation * Vector3.forward;
+                        float headingError = Vector3.SignedAngle(
+                            actorForward,
+                            desiredFacing.normalized,
+                            Vector3.up);
+                        turn = ShapeTurn(Mathf.Clamp(headingError / 90f, -1f, 1f));
+                    }
+                    move = BasketballMath.RelativeDirection(
+                        Vector3.ClampMagnitude(desiredWorldMove, 1f),
+                        state.ActorRootRotation);
+                }
+                else if (useOrbitAutoTurn)
                 {
                     Vector3 desiredWorldMove = cameraRotation * moveInput;
                     if (manualTurn != 0f)
@@ -362,7 +463,7 @@ namespace CrowdEyes.AI4Animation.Basketball
                 if (move != Vector3.zero)
                 {
                     move = BasketballMath.WorldDirection(move, state.ActorRootRotation);
-                    if (!useOrbitAutoTurn)
+                    if (!useOrbitAutoTurn && !useWorldControl)
                     {
                         move = Quaternion.AngleAxis(60f * turn, Vector3.up) * move;
                     }
@@ -376,7 +477,15 @@ namespace CrowdEyes.AI4Animation.Basketball
                     state.RootPositions[sample] = Vector3.Lerp(
                         state.RootPositions[sample], pivotRoot + ratio * move,
                         BasketballMath.GetControl(sample, 0.25f, 0.1f, 1f));
-                    if (moveActive && move.sqrMagnitude > 0f && turn != 0f)
+                    if (intent.UseWorldFacing && intent.WorldFacing.sqrMagnitude > 1e-10f)
+                    {
+                        Vector3 facing = Vector3.ProjectOnPlane(intent.WorldFacing, Vector3.up);
+                        state.RootRotations[sample] = Quaternion.Slerp(
+                            state.RootRotations[sample],
+                            Quaternion.LookRotation(facing.normalized, Vector3.up),
+                            BasketballMath.GetControl(sample, 0.5f, 0.1f, 1f));
+                    }
+                    else if (moveActive && move.sqrMagnitude > 0f && turn != 0f)
                     {
                         state.RootRotations[sample] = Quaternion.Slerp(
                             state.RootRotations[sample], Quaternion.LookRotation(move, Vector3.up),
@@ -427,14 +536,20 @@ namespace CrowdEyes.AI4Animation.Basketball
                             0 => stand ? 1f : 0f,
                             1 => moveActive ? 1f : 0f,
                             2 => dribble ? 1f : 0f,
-                            3 => hold ? 1f : 0f,
-                            _ => shoot ? 1f : 0f
+                            3 => holdAction,
+                            _ => shootAction
                         };
                         int index = BasketballAgentState.StyleIndex(sample, style);
                         state.Styles[index] = Mathf.Lerp(
                             state.Styles[index], action,
                             BasketballMath.GetControl(
-                                sample, StyleControlBias(style, hold, shoot), 0.1f, 1f));
+                                sample,
+                                StyleControlBias(
+                                    style,
+                                    holdAction > 0.5f,
+                                    shootAction > 0.1f),
+                                0.1f,
+                                1f));
                     }
                 }
             }
@@ -506,11 +621,18 @@ namespace CrowdEyes.AI4Animation.Basketball
             {
                 if (!state.Carrier)
                 {
-                    state.BallPositions[pivot] = rig.Ball.transform.position;
-                    state.BallRotations[pivot] = rig.Ball.transform.rotation;
-                    state.BallVelocities[pivot] = rig.Ball.Velocity;
+                    if (intent.Steal)
+                    {
+                        UpdateStealProxyBall(pivot);
+                    }
+                    else
+                    {
+                        state.BallPositions[pivot] = rig.Ball.transform.position;
+                        state.BallRotations[pivot] = rig.Ball.transform.rotation;
+                        state.BallVelocities[pivot] = rig.Ball.Velocity;
+                    }
 
-                    if (intent.Hold)
+                    if (possessionAuthority == null && intent.Hold)
                     {
                         float catchDistance = 1.25f * rig.Ball.Radius;
                         bool leftContact = Vector3.Distance(
@@ -519,28 +641,13 @@ namespace CrowdEyes.AI4Animation.Basketball
                             state.BonePositions[25], state.BallPositions[pivot]) <= catchDistance;
                         if (leftContact || rightContact)
                         {
-                            state.Carrier = true;
-                            reacquireTicksRemaining = 6;
-                            rig.Ball.BeginReacquire();
+                            SetCarrier(true, reacquire: true);
                         }
                     }
                     return;
                 }
 
-                float currentSpeed = state.BallVelocities[pivot].magnitude;
-                float previousSpeed = state.BallVelocities[pivot - 1].magnitude;
-                float handContact =
-                    state.Contacts[BasketballAgentState.ContactIndex(pivot, 2)] +
-                    state.Contacts[BasketballAgentState.ContactIndex(pivot, 3)];
-                if (intent.Shoot && currentSpeed < previousSpeed &&
-                    state.BallPositions[pivot].y > 1.5f && handContact < 0.1f)
-                {
-                    state.Carrier = false;
-                    rig.Ball.Release(state.BallVelocities[pivot], Vector3.zero);
-                    return;
-                }
-
-                if (reacquireTicksRemaining == 0)
+                if (possessionAuthority == null && reacquireTicksRemaining == 0)
                 {
                     BasketballBallAuthorityState desired = intent.Hold
                         ? BasketballBallAuthorityState.Held
@@ -551,6 +658,36 @@ namespace CrowdEyes.AI4Animation.Basketball
                     }
                 }
             }
+        }
+
+        private void UpdateStealProxyBall(int pivot)
+        {
+            // This proxy exists only in this non-owner agent's recurrent model state.
+            // It is never rendered and never gains authority over the shared Rigidbody.
+            Vector3 realPosition = rig.Ball.transform.position;
+            Vector3 chest = state.BonePositions[14];
+            Vector3 toBall = realPosition - chest;
+            const float maximumReach = 0.72f;
+            Vector3 proxyPosition = toBall.sqrMagnitude > maximumReach * maximumReach
+                ? chest + maximumReach * toBall.normalized
+                : realPosition;
+            proxyPosition.y = Mathf.Clamp(
+                proxyPosition.y,
+                state.ActorRootPosition.y + 0.35f,
+                state.ActorRootPosition.y + 1.75f);
+
+            state.BallPositions[pivot] = proxyPosition;
+            state.BallRotations[pivot] = rig.Ball.transform.rotation;
+            state.BallVelocities[pivot] = Vector3.ClampMagnitude(rig.Ball.Velocity, 4.5f);
+        }
+
+        private Vector3 CalculatePassVelocity(Vector3 origin)
+        {
+            Vector3 target = passTarget.TransformPoint(passTargetOffset);
+            Vector3 displacement = target - origin;
+            Vector3 horizontal = Vector3.ProjectOnPlane(displacement, Vector3.up);
+            float travelTime = Mathf.Clamp(horizontal.magnitude / 7f, 0.38f, 0.95f);
+            return displacement / travelTime - 0.5f * Physics.gravity * travelTime;
         }
 
         private void ProcessBallAfterDecode()
@@ -579,7 +716,26 @@ namespace CrowdEyes.AI4Animation.Basketball
                     state.BallVelocities[pivot] = velocity;
                 }
 
-                if (reacquireTicksRemaining > 0)
+                if (possessionAuthority == null)
+                {
+                    float currentSpeed = state.BallVelocities[pivot].magnitude;
+                    float previousSpeed = state.BallVelocities[pivot - 1].magnitude;
+                    float handContact =
+                        state.Contacts[BasketballAgentState.ContactIndex(pivot, 2)] +
+                        state.Contacts[BasketballAgentState.ContactIndex(pivot, 3)];
+                    if (intent.Shoot && currentSpeed < previousSpeed &&
+                        state.BallPositions[pivot].y > 1.5f && handContact < 0.1f)
+                    {
+                        Vector3 releaseVelocity = passTarget != null
+                            ? CalculatePassVelocity(state.BallPositions[pivot])
+                            : state.BallVelocities[pivot];
+                        SetCarrier(false, reacquire: false);
+                        rig.Ball.Release(releaseVelocity, Vector3.zero);
+                        ClearPassTarget();
+                    }
+                }
+
+                if (possessionAuthority == null && reacquireTicksRemaining > 0)
                 {
                     reacquireTicksRemaining--;
                     if (reacquireTicksRemaining == 0)
@@ -588,6 +744,28 @@ namespace CrowdEyes.AI4Animation.Basketball
                     }
                 }
             }
+        }
+
+        private BasketballBallObservation BuildBallObservation()
+        {
+            int pivot = BasketballAgentState.Pivot;
+            return new BasketballBallObservation(
+                state.TickCount,
+                state.BallPositions[pivot],
+                state.BallVelocities[pivot],
+                state.BallVelocities[pivot - 1],
+                state.ActorRootPosition,
+                state.ActorRootRotation * Vector3.forward,
+                state.BonePositions[18],
+                state.BonePositions[25],
+                state.BoneVelocities[18],
+                state.BoneVelocities[25],
+                state.Contacts[BasketballAgentState.ContactIndex(pivot, 2)],
+                state.Contacts[BasketballAgentState.ContactIndex(pivot, 3)],
+                state.Contacts[BasketballAgentState.ContactIndex(pivot, 4)],
+                intent.Hold,
+                state.ShootIntent,
+                intent.Steal);
         }
 
 #if UNITY_EDITOR

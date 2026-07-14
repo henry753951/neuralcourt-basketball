@@ -1,6 +1,6 @@
 # Known Differences from SIGGRAPH 2020 Basketball
 
-Last verified: 2026-07-13
+Implementation updated: 2026-07-15; Play Mode validation pending
 
 The `BasketballDemo.unity` Phase 1 reference was accepted after direct keyboard/mouse play
 comparison on 2026-07-13. The original model, recurrent data layout, control curves, ball/contact
@@ -14,7 +14,16 @@ path, IK, UI, and debug visualization are the behavior baseline for subsequent p
   enters Ball Control Mode so normal mouse movement can orbit the camera.
 - A future AI route controller will provide `BasketballIntent` directly; no path planner is part
   of Phase 2.
-- Multi-agent scheduling, optimized inference, low-frequency experiments, and production
+- The three-player team/pass/steal layer is reconstructed because the supplied SIGGRAPH 2020
+  project does not include a multiplayer match controller. Team filtering, central possession,
+  physical pass flight, contested/loose states and arbitration are new match-level rules.
+- The model has no Pass or Steal style labels. Passing uses Hold/root-facing preparation without
+  changing Ball Target, then performs a one-shot ballistic physical release. Steal gives the
+  defender a model-only proxy ball for pose context, but success still uses real swept hand-ball
+  distance and Touch-before-Secure arbitration; it does not claim a learned poke animation.
+- Unselected players intentionally receive Stand rather than Hold. Only an intended receiver in
+  `PassFlight` receives catch guidance; this prevents a remote ball from pulling idle hands/body.
+- Optimized inference, low-frequency experiments, and production
   performance sign-off remain later phases.
 
 ## Intentional differences

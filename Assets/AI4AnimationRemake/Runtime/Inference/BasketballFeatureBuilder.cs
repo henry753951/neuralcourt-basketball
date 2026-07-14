@@ -76,20 +76,53 @@ namespace CrowdEyes.AI4Animation.Basketball
                     }
                 }
 
+                BasketballAgentState rival = state.Rival;
                 for (int key = 0; key < BasketballAgentState.KeyCount; key++)
                 {
-                    input[cursor++] = 0f;
+                    int sample = BasketballAgentState.KeyIndex(key);
+                    float distance = GetInteractorDistance(state, rival, sample);
+                    input[cursor++] = distance < BasketballAgentState.InteractionRadius
+                        ? 1f
+                        : 0f;
                 }
                 for (int key = 0; key < BasketballAgentState.KeyCount; key++)
                 {
-                    for (int value = 0; value < 6; value++)
+                    int sample = BasketballAgentState.KeyIndex(key);
+                    float distance = GetInteractorDistance(state, rival, sample);
+                    if (rival == null || distance >= BasketballAgentState.InteractionRadius)
                     {
-                        input[cursor++] = 0f;
+                        for (int value = 0; value < 6; value++)
+                        {
+                            input[cursor++] = 0f;
+                        }
+                        continue;
                     }
+
+                    Quaternion actorRotation = state.RootRotations[sample];
+                    Vector3 relativePosition = BasketballMath.RelativePosition(
+                        rival.RootPositions[sample],
+                        state.RootPositions[sample],
+                        actorRotation);
+                    Vector3 gradient =
+                        (BasketballAgentState.InteractionRadius - distance) * relativePosition;
+                    WriteXZ(input, ref cursor, gradient);
+                    WriteXZ(input, ref cursor, BasketballMath.RelativeDirection(
+                        rival.RootRotations[sample] * Vector3.forward,
+                        actorRotation));
+                    WriteXZ(input, ref cursor, BasketballMath.RelativeDirection(
+                        rival.RootVelocities[sample],
+                        actorRotation));
                 }
                 for (int bone = 0; bone < BasketballSkeleton.BoneCount; bone++)
                 {
-                    input[cursor++] = BasketballAgentState.InteractionRadius;
+                    input[cursor++] = rival == null
+                        ? BasketballAgentState.InteractionRadius
+                        : Mathf.Clamp(
+                            Vector3.Distance(
+                                state.BonePositions[bone],
+                                rival.BonePositions[bone]),
+                            0f,
+                            BasketballAgentState.InteractionRadius);
                 }
 
                 for (int key = 0; key < BasketballAgentState.KeyCount; key++)
@@ -110,6 +143,26 @@ namespace CrowdEyes.AI4Animation.Basketball
                     throw new InvalidOperationException($"Feature builder wrote {cursor} values instead of 864.");
                 }
             }
+        }
+
+        private static float GetInteractorDistance(
+            BasketballAgentState state,
+            BasketballAgentState rival,
+            int sample)
+        {
+            if (rival == null)
+            {
+                return BasketballAgentState.InteractionRadius;
+            }
+
+            Vector3 actor = state.RootPositions[sample];
+            Vector3 opponent = rival.RootPositions[sample];
+            actor.y = 0f;
+            opponent.y = 0f;
+            return Mathf.Clamp(
+                Vector3.Distance(actor, opponent),
+                0f,
+                BasketballAgentState.InteractionRadius);
         }
 
         private static void Write(Span<float> output, ref int cursor, Vector3 value)

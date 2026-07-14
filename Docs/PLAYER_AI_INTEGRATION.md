@@ -2,15 +2,18 @@
 
 Last reviewed: 2026-07-14
 
-This document records the current single-player control architecture and the safe integration
-boundary for future player, team, navigation, and network AI. It is a design snapshot, not an
-implementation claim: the project does not yet contain an AI intent provider or multi-agent
-match coordinator.
+This document records the current three-player reference architecture and the safe integration
+boundary for future player, team, navigation, and network AI. The scene now contains a minimal
+match coordinator, simple teams, one shared ball, human player switching, teammate-only passing,
+and contact-validated opponent steals. It still does not contain navigation or tactical AI.
 
 ## Current runtime path
 
 ```text
-Keyboard / mouse
+Keyboard / mouse + Tab player selection
+  -> BasketballMatchController
+       -> simple team/pass/possession rules
+       -> one BasketballIntent override per player
   -> BasketballKeyboardMouseInputProvider
   -> BasketballIntent
   -> BasketballNeuralController.ApplyControl               fixed 30 Hz
@@ -22,7 +25,7 @@ Keyboard / mouse
   -> BasketballPoseApplicator + contact IK                 render frame
   -> canonical 26-bone rig
 
-BasketballAgentState <-> BasketballBallController <-> Rigidbody
+3 x BasketballAgentState <-> one BasketballBallController <-> Rigidbody
 Rendered player pose  -> ThirdPersonOrbitCamera
 BasketballAgentState  -> debug visualizer and UI Toolkit HUD
 ```
@@ -43,6 +46,25 @@ Every neural tick still follows the closed loop:
 The 30 Hz neural step is part of the model contract and must remain independent from the future
 AI decision rate.
 
+## Current match and team layer
+
+- P1 and P2 use Team A; P3 uses Team B.
+- `BasketballTeamMember` supplies stable player/team identity and per-agent references.
+- `BasketballMatchController` selects the active human, routes independent intents, filters pass
+  targets by team, and controls target indicators.
+- `BasketballPossessionManager` is the single `IBasketballPossessionAuthority`. It owns the
+  authoritative carrier, possession version, ball control mode and all acquire/release arbitration.
+- Only the carrier applies the predicted ball pose to the one shared ball.
+- A pass is a runtime state machine over the original Future Root facing and Hold style. It is
+  not a new model label and never writes Ball Target/Pivot/Momentum. Release applies one computed
+  projectile velocity and then uses pure Rigidbody flight.
+- Steal is a separate runtime intent because Hold is not a steal label. A model-only proxy gives
+  the defender pose context, but a real swept hand-ball touch must produce Loose/Contested first;
+  possession can change only in a later secure arbitration.
+
+These are match rules around the pretrained model. Team ID, target selection and possession
+authority are not added to the model's 864 inputs and do not change its 588 outputs.
+
 ## What replaced the original BasketballController responsibilities
 
 | Original responsibility | Current implementation | Meaning for future AI |
@@ -53,6 +75,7 @@ AI decision rate.
 | Hold | `BasketballIntent.Hold`; a carrier stops movement and moves the ball toward the hold target | AI may hold this intent across neural ticks |
 | Catch / reacquire | The same `Hold` intent while not carrier; proximity to either hand starts reacquisition | Catch must be requested before the hand/ball proximity condition occurs |
 | Shoot | `BasketballIntent.Shoot`; valid only while carrier; release waits for ball height, speed change, and low hand contact | A one-frame AI pulse can be missed, so future actions need latching/acknowledgement |
+| Steal | `BasketballIntent.Steal`; runtime-only contact intent, not a neural style | AI must approach so a real hand reaches the ball; Touch and Secure are separate |
 | Spin | `BasketballIntent.Spin`; applied only while moving | Supported by the neural control path, but keyboard currently does not expose it directly |
 | Horizontal ball control | `BasketballIntent.BallControl`, stored through pivot control | AI can target the legacy local ball-control disk after coordinate conversion |
 | Ball height control | `BasketballIntent.BallHeight` and internal `BallHeightControl` | Supported by the control contract; keyboard currently does not expose it |
@@ -72,9 +95,38 @@ public struct BasketballIntent
     public bool Sprint;
     public bool Hold;
     public bool Shoot;
+    public bool CatchReady;
+    public bool Steal;
+    public bool PassTargeting;
+    public bool CommitBallRelease;
+    public bool PassControl;
+    public float PassHoldStyle;
+    public float PassShootStyle;
+    public bool UseWorldMove;
+    public Vector3 WorldMove;
+    public bool UseWorldFacing;
+    public Vector3 WorldFacing;
     public bool IsGamepad;
 }
 ```
+
+The pass preparation fields reuse only the original Hold-style and root-facing controls. Pass
+direction is never written into Ball Target, Pivot or Momentum. These fields add no model
+inputs/outputs and do not alter the 864/588 contract.
+
+For the current teammate receiver, route/facing preparation begins in `PassPreparing`. The
+receiver sets `CatchReady`, which activates Hold style but deliberately leaves direct Hold and
+ball targeting disabled. It enables direct Hold only during `PassFlight` when the real ball is
+close or its expected arrival is imminent. This keeps inactive players stable while still giving
+the 30 Hz model several ticks to form a catch pose. Catch arbitration uses the real ball's swept
+physics path against hands and an intended-receiver-only live chest volume, preventing fast-ball
+tunnelling; the physical ball must cross one of those regions.
+
+An interception does not write ownership directly from the defender animation. Receiver catch
+and defender interception enter the same candidate arbitration. Similar candidates produce a
+Rigidbody-authoritative `Contested` state; a winner enters `CatchBlend`, while an unresolved
+contest becomes `Loose` after its timeout. Future team AI should react to these states rather
+than assuming every requested pass reaches its intended receiver.
 
 `IsGamepad` is a compatibility flag, not a semantic AI property. It currently affects analog
 ball-control normalization and movement interpretation. Future AI work should replace this
@@ -122,8 +174,9 @@ public interface IBasketballIntentSource
 
 Expected implementations are `HumanIntentSource`, `AIIntentSource`,
 `ScriptedScenarioIntentSource`, and eventually `NetworkIntentSource`. The current controller is
-still wired to the concrete `BasketballKeyboardMouseInputProvider`, so introducing this
-interface is the first behavior-preserving refactor required before player AI.
+still wired to the concrete `BasketballKeyboardMouseInputProvider`, while the match uses its
+existing override seam for standby intents. Introducing this interface remains the first
+behavior-preserving refactor required before real player AI.
 
 An AI planner should preferably emit a higher-level command in world space:
 
@@ -169,24 +222,29 @@ the original demo contract.
 
 ## Current limitations relevant to future AI
 
-- There is no `IBasketballIntentSource` yet; the neural controller references the concrete human
-  input provider.
+- There is no `IBasketballIntentSource` yet; active human input and match-generated standby
+  overrides are still routed by concrete components.
 - Movement-space semantics are partially coupled to camera/gamepad compatibility.
 - Keyboard control does not currently expose Spin or BallHeight, although the neural control
   path contains those channels.
 - Ball-speed control is internal rather than an explicit intent value.
-- Multi-agent ownership arbitration, team roles, navigation, avoidance, and passing protocols do
-  not exist yet.
+- Team identity, teammate-only pass filtering and atomic single-ball ownership now exist, but
+  tactical roles, navigation, avoidance, pass evaluation and defensive pursuit do not.
+- The current opponent steal has contact-validated Touch/Loose/Secure gameplay but no dedicated
+  learned poke animation. Unselected players intentionally remain Stand until future AI supplies
+  an explicit movement, catch or steal intent.
 - Shared immutable model storage and stagger/batch scheduling still need multi-agent profiling.
 - A phase-amplitude safety clamp protects the current closed loop from non-finite feedback; this
   is a documented safety difference while the remaining legacy feedback details are evaluated.
 
 ## Recommended next implementation order
 
-1. Add `IBasketballIntentSource` and preserve the current human adapter bit-for-bit.
-2. Add read-only `BasketballObservation` and a scripted intent source for deterministic tests.
-3. Add a world-space `PlayerCommand` to legacy-intent adapter, including action latching.
-4. Implement one AI-controlled player in the reference scene without changing model I/O.
-5. Add a second agent with independent recurrent state and explicit ball ownership.
+1. Add `IBasketballIntentSource` and preserve the current human/match adapters bit-for-bit.
+2. Add read-only `BasketballObservation` including roster, owner, ball and pass-target state.
+3. Add a world-space `PlayerCommand` to legacy-intent adapter, including action latching and
+   acknowledgement.
+4. Replace one standby player with scripted navigation/catch behavior, then one opponent with
+   approach/steal behavior, without changing model I/O.
+5. Add tactical pass choice, spacing and defensive assignment above the player command layer.
 6. Only after parity and profiling, introduce shared weight storage, staggered scheduling, LOD,
    and optional batch inference.

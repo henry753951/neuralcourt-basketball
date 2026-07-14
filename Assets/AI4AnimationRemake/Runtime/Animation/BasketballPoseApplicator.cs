@@ -22,7 +22,11 @@ namespace CrowdEyes.AI4Animation.Basketball
             this.ball = ball;
         }
 
-        public void Apply(BasketballPoseBuffer previous, BasketballPoseBuffer current, float alpha)
+        public void Apply(
+            BasketballPoseBuffer previous,
+            BasketballPoseBuffer current,
+            float alpha,
+            bool applyBall)
         {
             using (InterpolateMarker.Auto())
             {
@@ -40,10 +44,13 @@ namespace CrowdEyes.AI4Animation.Basketball
                             Quaternion.Slerp(previous.BoneRotations[bone], current.BoneRotations[bone], alpha));
                     }
 
-                    ball.SetControlledPose(
-                        Vector3.Lerp(previous.BallPosition, current.BallPosition, alpha),
-                        Quaternion.Slerp(previous.BallRotation, current.BallRotation, alpha),
-                        Vector3.Lerp(previous.BallVelocity, current.BallVelocity, alpha));
+                    if (applyBall)
+                    {
+                        ball.SetControlledPose(
+                            Vector3.Lerp(previous.BallPosition, current.BallPosition, alpha),
+                            Quaternion.Slerp(previous.BallRotation, current.BallRotation, alpha),
+                            Vector3.Lerp(previous.BallVelocity, current.BallVelocity, alpha));
+                    }
                 }
             }
         }

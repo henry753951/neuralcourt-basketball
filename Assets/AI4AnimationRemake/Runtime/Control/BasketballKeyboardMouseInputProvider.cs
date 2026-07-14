@@ -40,6 +40,12 @@ namespace CrowdEyes.AI4Animation.Basketball
             return intent;
         }
 
+        public void SetExternalControlVisualization(Vector2 value, bool active)
+        {
+            CurrentBallControl = Vector2.ClampMagnitude(value, 1f);
+            IsBallControlMode = active;
+        }
+
         private BasketballIntent ReadKeyboard()
         {
             Keyboard keyboard = Keyboard.current;

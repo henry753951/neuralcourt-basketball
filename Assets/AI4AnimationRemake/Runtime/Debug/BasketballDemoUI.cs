@@ -30,7 +30,7 @@ namespace CrowdEyes.AI4Animation.Basketball
             keyboardInfo = transform.Find("Info/Keyboard")?.gameObject;
             gamepadInfo = transform.Find("Info/Gamepad")?.gameObject;
             SetText("Info/Keyboard/Move", "WASD move + face camera | Q/E extra turn | Mouse orbit");
-            SetText("Info/Keyboard/Actions", "Shift sprint | Space shoot | Ctrl hold/catch | R recenter");
+            SetText("Info/Keyboard/Actions", "Space shoot | Ctrl+LMB pass | LMB steal | R recenter");
             SetText("Info/Keyboard/Ball", "Hold RMB + move Mouse to control the ball.");
             SetText("Info/Esc", "ESC toggles cursor lock.");
 

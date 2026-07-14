@@ -17,7 +17,7 @@
                 <ui:Button name="hud-toggle" text="HUD" class="toolbar-button is-active" />
                 <ui:Button name="debug-toggle" text="DEBUG" class="toolbar-button is-active" />
                 <ui:VisualElement class="mode-pill" picking-mode="Ignore">
-                    <ui:Label text="KEYBOARD + MOUSE" class="mode-label" />
+                    <ui:Label name="mode-label" text="P1 / TEAM A" class="mode-label" />
                 </ui:VisualElement>
             </ui:VisualElement>
         </ui:VisualElement>

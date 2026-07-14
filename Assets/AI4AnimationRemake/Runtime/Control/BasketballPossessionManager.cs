@@ -32,7 +32,6 @@ namespace CrowdEyes.AI4Animation.Basketball
         private BasketballTeamMember passer;
         private BasketballTeamMember intendedReceiver;
         private BasketballPassPlan passPlan;
-        private BasketballBallObservation bestReleaseObservation;
         private float bestReleaseScore;
         private float bestReleaseDirectionError;
         private float bestReleaseSpeedScale;
@@ -47,7 +46,6 @@ namespace CrowdEyes.AI4Animation.Basketball
         private float stealTouchCandidateQuality;
         private float stealTouchStartedAt = float.NegativeInfinity;
         private float stealTouchExpiresAt = float.NegativeInfinity;
-        private bool hasBestReleaseObservation;
         private bool initialized;
 
         public BasketballTeamMember Owner => owner;
@@ -193,7 +191,6 @@ namespace CrowdEyes.AI4Animation.Basketball
             LastReleaseSpeedScale = float.PositiveInfinity;
             LastReleaseVerticalError = float.PositiveInfinity;
             LastPassFailureReason = null;
-            hasBestReleaseObservation = false;
             BallState = BasketballPossessionState.PassPreparing;
             BallControlMode = BasketballBallControlMode.NeuralPassPreparation;
             return true;
@@ -334,11 +331,9 @@ namespace CrowdEyes.AI4Animation.Basketball
             if (score > bestReleaseScore)
             {
                 bestReleaseScore = score;
-                bestReleaseObservation = observation;
                 bestReleaseDirectionError = directionError;
                 bestReleaseSpeedScale = speedScale;
                 bestReleaseVerticalError = verticalError;
-                hasBestReleaseObservation = true;
             }
 
             Vector3 desiredFacing = Vector3.ProjectOnPlane(
@@ -428,7 +423,6 @@ namespace CrowdEyes.AI4Animation.Basketball
             passer = null;
             intendedReceiver = null;
             passPlan = default;
-            hasBestReleaseObservation = false;
             bestReleaseScore = 0f;
             BallState = BasketballPossessionState.Possessed;
             BallControlMode = BasketballBallControlMode.NeuralPossession;

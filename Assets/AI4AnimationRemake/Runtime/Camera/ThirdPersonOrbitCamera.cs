@@ -1,3 +1,4 @@
+using Unity.Profiling;
 using UnityEngine;
 using UnityEngine.InputSystem;
 
@@ -12,36 +13,21 @@ namespace CrowdEyes.AI4Animation.Basketball
     [RequireComponent(typeof(Camera))]
     public sealed class ThirdPersonOrbitCamera : MonoBehaviour
     {
+        private static readonly ProfilerMarker CameraMarker = new("Basketball.Camera");
+        private static readonly ProfilerMarker CameraInputMarker =
+            new("Basketball.Camera.Input");
+        private static readonly ProfilerMarker CameraCollisionMarker =
+            new("Basketball.Camera.Collision");
+
         [Header("Target")]
         [SerializeField] private Transform target;
         [SerializeField] private Vector3 pivotOffset = new(0f, 1.35f, 0f);
 
-        [Header("Orbit")]
-        [SerializeField, Min(0.01f)] private float mouseSensitivity = 0.12f;
-        [SerializeField] private float minimumPitch = -15f;
-        [SerializeField] private float maximumPitch = 70f;
-        [SerializeField] private float recenterPitch = 18f;
-        [SerializeField, Min(0f)] private float rotationSmoothTime = 0.045f;
-
-        [Header("Distance")]
-        [SerializeField, Min(0.1f)] private float distance = 5.8f;
-        [SerializeField, Min(0.1f)] private float minimumDistance = 1.5f;
-        [SerializeField, Min(0.1f)] private float maximumDistance = 9f;
-        [SerializeField, Min(0.01f)] private float zoomSensitivity = 0.015f;
-        [SerializeField, Min(0f)] private float positionSmoothTime = 0.06f;
-        [SerializeField, Min(0f)] private float distanceSmoothTime = 0.08f;
-
-        [Header("Collision")]
-        [SerializeField] private LayerMask collisionMask = (1 << 0) | (1 << 9);
-        [SerializeField, Min(0.01f)] private float collisionRadius = 0.2f;
-        [SerializeField, Min(0f)] private float collisionPadding = 0.08f;
-        [SerializeField, Min(0.05f)] private float minimumCollisionDistance = 0.35f;
-
-        [Header("Cursor")]
-        [SerializeField] private bool lockCursorOnPlay = true;
-
+        private BasketballRuntimeSettings runtimeSettings;
+        private Camera attachedCamera;
         private float desiredYaw;
         private float desiredPitch;
+        private float desiredDistance;
         private float currentYaw;
         private float currentPitch;
         private float currentDistance;
@@ -51,7 +37,12 @@ namespace CrowdEyes.AI4Animation.Basketball
         private Vector3 positionVelocity;
         private bool initialized;
         private bool cursorLocked;
+        private int collisionQueryCountdown;
+        private float cachedCollisionDistance;
 
+        public BasketballRuntimeSettings RuntimeSettings => runtimeSettings != null
+            ? runtimeSettings
+            : BasketballRuntimeSettings.LoadDefault();
         public Transform Target => target;
         public float CurrentDistance => currentDistance;
         public bool CursorLocked => cursorLocked;
@@ -62,10 +53,15 @@ namespace CrowdEyes.AI4Animation.Basketball
 
         private void OnEnable()
         {
+            runtimeSettings = runtimeSettings != null
+                ? runtimeSettings
+                : BasketballRuntimeSettings.LoadDefault();
+            attachedCamera = GetComponent<Camera>();
+            ApplyCameraSettings();
             InitializeFromCurrentPose();
             if (Application.isPlaying)
             {
-                SetCursorLocked(lockCursorOnPlay);
+                SetCursorLocked(RuntimeSettings == null || RuntimeSettings.LockCursorOnPlay);
             }
         }
 
@@ -79,99 +75,111 @@ namespace CrowdEyes.AI4Animation.Basketball
 
         private void Update()
         {
-            if (target == null)
+            using (CameraInputMarker.Auto())
             {
-                return;
-            }
-
-            Keyboard keyboard = Keyboard.current;
-            Mouse mouse = Mouse.current;
-            if (keyboard != null && keyboard.escapeKey.wasPressedThisFrame)
-            {
-                SetCursorLocked(!cursorLocked);
-            }
-
-            if (!cursorLocked)
-            {
-                if (mouse != null && mouse.leftButton.wasPressedThisFrame)
+                BasketballRuntimeSettings settings = RuntimeSettings;
+                if (target == null || settings == null)
                 {
-                    SetCursorLocked(true);
+                    return;
                 }
-                return;
-            }
 
-            if (keyboard != null && keyboard.rKey.wasPressedThisFrame)
-            {
-                Recenter();
-            }
+                Keyboard keyboard = Keyboard.current;
+                Mouse mouse = Mouse.current;
+                if (keyboard != null && keyboard.escapeKey.wasPressedThisFrame)
+                {
+                    SetCursorLocked(!cursorLocked);
+                }
 
-            // Right mouse is reserved for the original ball-location control.
-            if (mouse != null && !mouse.rightButton.isPressed)
-            {
-                Vector2 delta = mouse.delta.ReadValue();
-                desiredYaw += delta.x * mouseSensitivity;
-                desiredPitch = Mathf.Clamp(
-                    desiredPitch - delta.y * mouseSensitivity,
-                    minimumPitch,
-                    maximumPitch);
-            }
+                if (!cursorLocked)
+                {
+                    if (mouse != null && mouse.leftButton.wasPressedThisFrame)
+                    {
+                        SetCursorLocked(true);
+                    }
+                    return;
+                }
 
-            if (mouse != null)
-            {
-                float scroll = mouse.scroll.ReadValue().y;
-                distance = Mathf.Clamp(
-                    distance - scroll * zoomSensitivity,
-                    minimumDistance,
-                    maximumDistance);
+                if (keyboard != null && keyboard.rKey.wasPressedThisFrame)
+                {
+                    Recenter();
+                }
+
+                // Right mouse is reserved for the original ball-location control.
+                if (mouse != null && !mouse.rightButton.isPressed)
+                {
+                    Vector2 delta = mouse.delta.ReadValue();
+                    desiredYaw += delta.x * settings.MouseSensitivity;
+                    desiredPitch = Mathf.Clamp(
+                        desiredPitch - delta.y * settings.MouseSensitivity,
+                        settings.MinimumPitch,
+                        settings.MaximumPitch);
+                }
+
+                if (mouse != null)
+                {
+                    float scroll = mouse.scroll.ReadValue().y;
+                    desiredDistance = Mathf.Clamp(
+                        desiredDistance - scroll * settings.ZoomSensitivity,
+                        settings.MinimumCameraDistance,
+                        settings.MaximumCameraDistance);
+                }
             }
         }
 
         private void LateUpdate()
         {
-            if (target == null)
+            using (CameraMarker.Auto())
             {
-                return;
-            }
-            if (!initialized)
-            {
-                InitializeFromCurrentPose();
-            }
+                BasketballRuntimeSettings settings = RuntimeSettings;
+                if (target == null || settings == null)
+                {
+                    return;
+                }
+                if (!initialized)
+                {
+                    InitializeFromCurrentPose();
+                }
 
-            float deltaTime = Mathf.Max(Time.unscaledDeltaTime, 0.0001f);
-            currentYaw = Mathf.SmoothDampAngle(
-                currentYaw, desiredYaw, ref yawVelocity, rotationSmoothTime,
-                Mathf.Infinity, deltaTime);
-            currentPitch = Mathf.SmoothDampAngle(
-                currentPitch, desiredPitch, ref pitchVelocity, rotationSmoothTime,
-                Mathf.Infinity, deltaTime);
+                float deltaTime = Mathf.Max(Time.unscaledDeltaTime, 0.0001f);
+                currentYaw = Mathf.SmoothDampAngle(
+                    currentYaw, desiredYaw, ref yawVelocity, settings.RotationSmoothTime,
+                    Mathf.Infinity, deltaTime);
+                currentPitch = Mathf.SmoothDampAngle(
+                    currentPitch, desiredPitch, ref pitchVelocity, settings.RotationSmoothTime,
+                    Mathf.Infinity, deltaTime);
 
-            Vector3 pivot = target.position + pivotOffset;
-            Quaternion orbitRotation = Quaternion.Euler(currentPitch, currentYaw, 0f);
-            Vector3 cameraDirection = -(orbitRotation * Vector3.forward);
-            float collisionDistance = ResolveCollisionDistance(pivot, cameraDirection, distance);
+                Vector3 pivot = target.position + pivotOffset;
+                Quaternion orbitRotation = Quaternion.Euler(currentPitch, currentYaw, 0f);
+                Vector3 cameraDirection = -(orbitRotation * Vector3.forward);
+                float collisionDistance = ResolveCollisionDistance(
+                    pivot,
+                    cameraDirection,
+                    desiredDistance,
+                    settings);
 
-            // Move inward immediately so an obstacle cannot be crossed. Ease back out when clear.
-            if (collisionDistance < currentDistance)
-            {
-                currentDistance = collisionDistance;
-                distanceVelocity = 0f;
+                // Move inward immediately so an obstacle cannot be crossed. Ease back out when clear.
+                if (collisionDistance < currentDistance)
+                {
+                    currentDistance = collisionDistance;
+                    distanceVelocity = 0f;
+                }
+                else
+                {
+                    currentDistance = Mathf.SmoothDamp(
+                        currentDistance, collisionDistance, ref distanceVelocity,
+                        settings.DistanceSmoothTime, Mathf.Infinity, deltaTime);
+                }
+
+                Vector3 desiredPosition = pivot + cameraDirection * currentDistance;
+                Vector3 smoothedPosition = Vector3.SmoothDamp(
+                    transform.position, desiredPosition, ref positionVelocity,
+                    settings.PositionSmoothTime, Mathf.Infinity, deltaTime);
+                Vector3 lookDirection = pivot - smoothedPosition;
+                Quaternion desiredRotation = lookDirection.sqrMagnitude > 1e-8f
+                    ? Quaternion.LookRotation(lookDirection, Vector3.up)
+                    : orbitRotation;
+                transform.SetPositionAndRotation(smoothedPosition, desiredRotation);
             }
-            else
-            {
-                currentDistance = Mathf.SmoothDamp(
-                    currentDistance, collisionDistance, ref distanceVelocity,
-                    distanceSmoothTime, Mathf.Infinity, deltaTime);
-            }
-
-            Vector3 desiredPosition = pivot + cameraDirection * currentDistance;
-            Vector3 smoothedPosition = Vector3.SmoothDamp(
-                transform.position, desiredPosition, ref positionVelocity,
-                positionSmoothTime, Mathf.Infinity, deltaTime);
-            Vector3 lookDirection = pivot - smoothedPosition;
-            Quaternion desiredRotation = lookDirection.sqrMagnitude > 1e-8f
-                ? Quaternion.LookRotation(lookDirection, Vector3.up)
-                : orbitRotation;
-            transform.SetPositionAndRotation(smoothedPosition, desiredRotation);
         }
 
         public void Recenter()
@@ -181,7 +189,14 @@ namespace CrowdEyes.AI4Animation.Basketball
                 return;
             }
             SetHeading(target.eulerAngles.y, false);
-            desiredPitch = Mathf.Clamp(recenterPitch, minimumPitch, maximumPitch);
+            BasketballRuntimeSettings settings = RuntimeSettings;
+            if (settings != null)
+            {
+                desiredPitch = Mathf.Clamp(
+                    settings.RecenterPitch,
+                    settings.MinimumPitch,
+                    settings.MaximumPitch);
+            }
         }
 
         public void SetTarget(Transform followTarget)
@@ -192,6 +207,7 @@ namespace CrowdEyes.AI4Animation.Basketball
             }
             target = followTarget;
             positionVelocity = Vector3.zero;
+            collisionQueryCountdown = 0;
             if (!initialized && target != null)
             {
                 InitializeFromCurrentPose();
@@ -221,7 +237,8 @@ namespace CrowdEyes.AI4Animation.Basketball
 
         private void InitializeFromCurrentPose()
         {
-            if (target == null)
+            BasketballRuntimeSettings settings = RuntimeSettings;
+            if (target == null || settings == null)
             {
                 initialized = false;
                 return;
@@ -234,18 +251,26 @@ namespace CrowdEyes.AI4Animation.Basketball
                 Vector3 angles = Quaternion.LookRotation(toPivot, Vector3.up).eulerAngles;
                 desiredYaw = currentYaw = angles.y;
                 desiredPitch = currentPitch = NormalizeAngle(angles.x);
-                distance = Mathf.Clamp(toPivot.magnitude, minimumDistance, maximumDistance);
+                desiredDistance = Mathf.Clamp(
+                    toPivot.magnitude,
+                    settings.MinimumCameraDistance,
+                    settings.MaximumCameraDistance);
             }
             else
             {
                 desiredYaw = currentYaw = target.eulerAngles.y;
-                desiredPitch = currentPitch = recenterPitch;
-                distance = Mathf.Clamp(distance, minimumDistance, maximumDistance);
+                desiredPitch = currentPitch = settings.RecenterPitch;
+                desiredDistance = Mathf.Clamp(
+                    settings.CameraDistance,
+                    settings.MinimumCameraDistance,
+                    settings.MaximumCameraDistance);
             }
 
             desiredPitch = currentPitch = Mathf.Clamp(
-                desiredPitch, minimumPitch, maximumPitch);
-            currentDistance = distance;
+                desiredPitch, settings.MinimumPitch, settings.MaximumPitch);
+            currentDistance = desiredDistance;
+            cachedCollisionDistance = desiredDistance;
+            collisionQueryCountdown = 0;
             positionVelocity = Vector3.zero;
             initialized = true;
         }
@@ -253,23 +278,61 @@ namespace CrowdEyes.AI4Animation.Basketball
         private float ResolveCollisionDistance(
             Vector3 pivot,
             Vector3 cameraDirection,
-            float requestedDistance)
+            float requestedDistance,
+            BasketballRuntimeSettings settings)
         {
-            float resolved = requestedDistance;
-            if (Physics.SphereCast(
-                    pivot,
-                    collisionRadius,
-                    cameraDirection,
-                    out RaycastHit hit,
-                    requestedDistance,
-                    collisionMask,
-                    QueryTriggerInteraction.Ignore))
+            if (!settings.CameraCollisionEnabled)
             {
-                resolved = Mathf.Max(
-                    minimumCollisionDistance,
-                    hit.distance - collisionPadding);
+                return requestedDistance;
             }
+            if (collisionQueryCountdown > 0)
+            {
+                collisionQueryCountdown--;
+                return Mathf.Min(requestedDistance, cachedCollisionDistance);
+            }
+
+            float resolved = requestedDistance;
+            using (CameraCollisionMarker.Auto())
+            {
+                if (Physics.SphereCast(
+                        pivot,
+                        settings.CameraCollisionRadius,
+                        cameraDirection,
+                        out RaycastHit hit,
+                        requestedDistance,
+                        settings.CameraCollisionMask,
+                        QueryTriggerInteraction.Ignore))
+                {
+                    resolved = Mathf.Max(
+                        settings.MinimumCollisionDistance,
+                        hit.distance - settings.CameraCollisionPadding);
+                }
+            }
+            cachedCollisionDistance = resolved;
+            collisionQueryCountdown = settings.CollisionQueryIntervalFrames - 1;
             return resolved;
+        }
+
+        internal void SetRuntimeSettings(BasketballRuntimeSettings value)
+        {
+            runtimeSettings = value;
+            ApplyCameraSettings();
+            initialized = false;
+        }
+
+        private void ApplyCameraSettings()
+        {
+            BasketballRuntimeSettings settings = RuntimeSettings;
+            if (attachedCamera == null)
+            {
+                attachedCamera = GetComponent<Camera>();
+            }
+            if (attachedCamera == null || settings == null)
+            {
+                return;
+            }
+            attachedCamera.useOcclusionCulling = settings.UseOcclusionCulling;
+            attachedCamera.allowDynamicResolution = settings.AllowDynamicResolution;
         }
 
         private static float NormalizeAngle(float angle)
@@ -278,25 +341,17 @@ namespace CrowdEyes.AI4Animation.Basketball
         }
 
 #if UNITY_EDITOR
-        public void Configure(Transform followTarget)
+        public void Configure(
+            Transform followTarget,
+            BasketballRuntimeSettings settings = null)
         {
             target = followTarget;
+            runtimeSettings = settings != null
+                ? settings
+                : BasketballRuntimeSettings.LoadDefault();
             pivotOffset = new Vector3(0f, 1.35f, 0f);
-            mouseSensitivity = 0.12f;
-            minimumPitch = -15f;
-            maximumPitch = 70f;
-            recenterPitch = 18f;
-            rotationSmoothTime = 0.045f;
-            minimumDistance = 1.5f;
-            maximumDistance = 9f;
-            zoomSensitivity = 0.015f;
-            positionSmoothTime = 0.06f;
-            distanceSmoothTime = 0.08f;
-            collisionMask = (1 << 0) | (1 << 9);
-            collisionRadius = 0.2f;
-            collisionPadding = 0.08f;
-            minimumCollisionDistance = 0.35f;
-            lockCursorOnPlay = true;
+            attachedCamera = GetComponent<Camera>();
+            ApplyCameraSettings();
             initialized = false;
             InitializeFromCurrentPose();
         }

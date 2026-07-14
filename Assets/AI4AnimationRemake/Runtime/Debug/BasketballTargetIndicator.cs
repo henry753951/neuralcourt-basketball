@@ -32,8 +32,15 @@ namespace CrowdEyes.AI4Animation.Basketball
             GameObject visual = new("Target Indicator Visual");
             visual.transform.SetParent(transform, false);
             ring = visual.AddComponent<LineRenderer>();
-            Shader shader = Shader.Find("Sprites/Default") ??
-                            Shader.Find("Universal Render Pipeline/Unlit");
+            // Prioritize URP shaders for this URP project
+            Shader shader = Shader.Find("Universal Render Pipeline/Unlit")
+                         ?? Shader.Find("Universal Render Pipeline/Lit")
+                         ?? Shader.Find("Sprites/Default");
+            if (shader == null)
+            {
+                Debug.LogError("[BasketballTargetIndicator] No suitable shader found. Ring will be invisible.");
+                shader = Shader.Find("Hidden/InternalErrorShader") ?? Shader.Find("Sprites/Default");
+            }
             runtimeMaterial = new Material(shader);
             ring.sharedMaterial = runtimeMaterial;
             ring.useWorldSpace = false;

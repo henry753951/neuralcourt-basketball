@@ -6,7 +6,7 @@
                 <ui:VisualElement class="brand-mark" picking-mode="Ignore" />
                 <ui:VisualElement class="brand-copy" picking-mode="Ignore">
                     <ui:Label text="AI4ANIMATION" class="brand-title" />
-                    <ui:Label text="BASKETBALL / REFERENCE 30 HZ" class="brand-subtitle" />
+                    <ui:Label text="BASKETBALL / SHARED RUNTIME PROFILE" class="brand-subtitle" />
                 </ui:VisualElement>
                 <ui:VisualElement class="live-pill" picking-mode="Ignore">
                     <ui:VisualElement class="live-dot" picking-mode="Ignore" />
@@ -42,6 +42,27 @@
             <ui:VisualElement class="metric-row compact"><ui:Label text="L HAND" class="metric-name" /><ui:VisualElement class="metric-track"><ui:VisualElement name="contact-2" class="metric-fill contact-fill" /></ui:VisualElement></ui:VisualElement>
             <ui:VisualElement class="metric-row compact"><ui:Label text="R HAND" class="metric-name" /><ui:VisualElement class="metric-track"><ui:VisualElement name="contact-3" class="metric-fill contact-fill" /></ui:VisualElement></ui:VisualElement>
             <ui:VisualElement class="metric-row compact"><ui:Label text="BALL" class="metric-name" /><ui:VisualElement class="metric-track"><ui:VisualElement name="contact-4" class="metric-fill contact-fill" /></ui:VisualElement></ui:VisualElement>
+        </ui:VisualElement>
+
+        <ui:VisualElement name="performance-card" class="glass-card performance-card" picking-mode="Ignore">
+            <ui:VisualElement class="performance-heading" picking-mode="Ignore">
+                <ui:VisualElement picking-mode="Ignore">
+                    <ui:Label text="PERFORMANCE" class="eyebrow" />
+                    <ui:Label text="RUNTIME METRICS" class="card-title performance-title" />
+                </ui:VisualElement>
+                <ui:Label name="backend-label" text="REFERENCE C#" class="mono-label" />
+            </ui:VisualElement>
+            <ui:VisualElement class="performance-row"><ui:Label text="FPS" class="performance-name" /><ui:Label name="fps-label" text="--" class="performance-value performance-primary" /></ui:VisualElement>
+            <ui:VisualElement class="performance-row"><ui:Label text="FRAME" class="performance-name" /><ui:Label name="frame-time-label" text="--" class="performance-value" /></ui:VisualElement>
+            <ui:VisualElement class="performance-row"><ui:Label text="MAIN CPU" class="performance-name" /><ui:Label name="main-thread-label" text="--" class="performance-value" /></ui:VisualElement>
+            <ui:VisualElement class="performance-row"><ui:Label text="GPU" class="performance-name" /><ui:Label name="gpu-time-label" text="--" class="performance-value" /></ui:VisualElement>
+            <ui:VisualElement class="performance-row"><ui:Label text="GC / FRAME" class="performance-name" /><ui:Label name="gc-label" text="--" class="performance-value" /></ui:VisualElement>
+            <ui:VisualElement class="performance-row"><ui:Label text="INFERENCE" class="performance-name" /><ui:Label name="inference-label" text="--" class="performance-value" /></ui:VisualElement>
+            <ui:VisualElement class="performance-row"><ui:Label text="GPU INFER RTT" class="performance-name" /><ui:Label name="sentis-latency-label" text="--" class="performance-value" /></ui:VisualElement>
+            <ui:VisualElement class="performance-row"><ui:Label text="NEURAL PIPE" class="performance-name" /><ui:Label name="neural-pipeline-label" text="--" class="performance-value" /></ui:VisualElement>
+            <ui:VisualElement class="performance-row"><ui:Label text="ANIMATION" class="performance-name" /><ui:Label name="animation-label" text="--" class="performance-value" /></ui:VisualElement>
+            <ui:VisualElement class="performance-row"><ui:Label text="CAMERA SCRIPT" class="performance-name" /><ui:Label name="camera-cpu-label" text="--" class="performance-value" /></ui:VisualElement>
+            <ui:VisualElement class="performance-row"><ui:Label text="NEURAL RATE" class="performance-name" /><ui:Label name="neural-rate-label" text="WARMUP" class="performance-value performance-accent" /></ui:VisualElement>
         </ui:VisualElement>
 
         <ui:VisualElement name="expert-card" class="glass-card expert-card" picking-mode="Ignore">

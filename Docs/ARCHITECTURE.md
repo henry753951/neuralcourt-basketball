@@ -7,6 +7,7 @@ from rendered transforms so interpolation cannot feed presentation state back in
 
 ```text
 BasketballMatchController
+  -> one shared BasketballRuntimeSettings profile
   -> Team roster (P1/P2 Team A, P3 Team B)
   -> active player / Tab switching / camera target
   -> teammate-only pass lock and pass-command latch
@@ -15,10 +16,18 @@ BasketballMatchController
 
 BasketballKeyboardMouseInputProvider
   -> BasketballIntent
-  -> BasketballNeuralController.Control                    [30 Hz]
+  -> BasketballNeuralController.Control             [10-30 Hz; 30 Hz reference]
   -> BasketballAgentState (61 samples, per-agent recurrent state)
   -> BasketballFeatureBuilder (864 floats)
-  -> BasketballReferenceBackend (shared model data, 8-expert MoE)
+  -> IBasketballInferenceBackend
+       -> BasketballReferenceBackend (default correctness oracle)
+       -> BasketballBurstBackend (synchronous Burst CPU, shared native model data)
+       -> local fallback while Sentis is unavailable/warming
+  -> BasketballSentisBatchScheduler (optional shared configurable clock)
+       -> three prepared [864] rows
+       -> official Sentis GPUCompute worker [3,864] -> [3,596]
+       -> asynchronous GPU readback
+       -> three independent 588-output state commits + 8 gating values each
   -> BasketballOutputDecoder (588 floats)
   -> previous/current BasketballPoseBuffer
   -> BasketballPoseApplicator (render Lerp/Slerp)
@@ -32,15 +41,22 @@ Rendered Player Transform
 ## Ownership
 
 - `BasketballModelAsset` owns the imported immutable model reference and validates all 58
-  buffers. Backend initialization reads these shared arrays; per-tick inference uses
-  preallocated work buffers.
+  buffers. The reference backend reads the asset's shared managed arrays directly. Burst agents
+  acquire one reference-counted persistent `NativeArray` copy per model asset through
+  `BasketballBurstModelCache`; per-agent input, output, blended-weight and hidden-layer scratch
+  buffers remain independent and preallocated.
 - `BasketballAgentState` owns one agent's root trajectory, pose/velocity, dribble, ball,
   style, contact, and phase history. It is never shared between agents.
-- `BasketballNeuralController` owns the fixed neural clock. The shipping reference rate is
-  hard-validated at 30 Hz.
+- `BasketballNeuralController` owns the fixed neural clock on Reference/Burst. When all three
+  demo rigs select `SentisGpuBatch`, `BasketballSentisBatchScheduler` temporarily owns one shared
+  profile-driven clock; each controller still owns its state, feature/output buffers and decode
+  path. The 30 Hz setting is canonical; lower settings are experimental scheduling only.
 - Every player owns an independent `BasketballAgentState`, backend work buffers, pose history,
-  contacts, phase, and recurrent trajectory. Three players currently run at the same 30 Hz
-  reference rate.
+  contacts, phase, and recurrent trajectory. All players consume the same runtime profile and
+  therefore share one configured neural rate while retaining independent state.
+- `BasketballRuntimeSettings` is the match-level source for neural rate, presentation
+  interpolation, catch-up limit, inference backend, camera tuning, frame pacing, HUD sampling
+  and the realtime-shadow budget. It replaces duplicated runtime fields on individual rigs.
 - `BasketballTeamMember` stores stable player/team identity and references to that player's
   controller, input adapter, debug view, and target indicator.
 - `BasketballMatchController` routes human/team commands, filters pass targets, latches pass/fake
@@ -79,6 +95,38 @@ Inference, feature construction, output decode, pose capture, and pose applicati
 preallocated arrays. The current code contains no LINQ or per-tick Tasks. A Profiler capture is
 still required before claiming zero GC allocation for the complete frame.
 
+## Inference execution
+
+`BasketballRuntimeSettings.InferenceBackend` chooses the execution path before agent
+initialization. Reference
+remains the correctness oracle. Burst and Reference implement the same per-agent
+`IBasketballInferenceBackend` contract and expose the most recent eight gating weights. The
+current shared profile explicitly selects `SentisGpuBatch`.
+
+The Burst implementation uses strict/high-precision jobs in three ordered stages: normalization
+and Gating; three parallel expert-weight blends plus a small bias blend; then the dense network
+and output denormalization. `Evaluate` waits for those stages before decode, so this does not
+change the 30 Hz closed loop or add one-frame latency. It does not yet run complete agents in
+parallel or stagger their ticks.
+
+The Sentis path is a project-owned conversion of the same math, not a replacement model. Offline
+Python authoring reads the complete legacy YAML asset and emits a fixed batch-three ONNX graph;
+Python is never part of the Unity runtime. One worker schedules the three normalized MoE rows on
+`BackendType.GPUCompute`. Its packed output combines the original 588 values with eight duplicate
+gating values used only by the HUD, reducing GPU-to-CPU transfer to one readback. No second tick
+is prepared until readback completes, so autoregressive state ordering remains intact.
+
+Worker warm-up runs while the controllers continue on Burst. After warm-up, the scheduler splits
+each neural tick into prepare, batch schedule, readback poll, and commit. Render interpolation
+uses scheduler time but never writes presentation state into simulation. Initialization or
+schedule failure detaches all three controllers together and retains their Burst backends; mixed
+GPU/CPU ownership is not allowed.
+
+Previous/current pose buffers always stay at neural-tick boundaries. Render frames use position
+`Lerp` and quaternion `Slerp`; the profile can shape alpha linearly or with SmoothStep. Disabling
+interpolation snaps presentation to current state. Changing neural rate never changes feature
+dimensions, Feed/Read order, normalization or the model's trained fixed-step formulas.
+
 ## Profiler markers present
 
 - `Basketball.Control`
@@ -88,5 +136,15 @@ still required before claiming zero GC allocation for the complete frame.
 - `Basketball.Ball`
 - `Basketball.Interpolate`
 - `Basketball.ApplyPose`
+- `Basketball.Contact`
+- `Basketball.IK`
+- `Basketball.Camera`
+- `Basketball.Camera.Input`
+- `Basketball.Camera.Collision`
 
-Contact/IK markers will be attached when those processing stages are implemented.
+The Burst path also emits nested `Basketball.Inference.Burst`, `.Gating`, `.Blend`, and `.Dense`
+samples beneath the common `Basketball.Inference` marker.
+
+The Sentis path adds `Basketball.Inference.Sentis.Schedule` and
+`Basketball.Inference.Sentis.Readback`. HUD `GPU INFER RTT` measures wall-clock schedule-to-readback
+latency; it is distinct from the CPU duration of `Basketball.Inference`.

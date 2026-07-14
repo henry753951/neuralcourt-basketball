@@ -321,6 +321,29 @@ The original loader assigns `buffer[row * cols + col]` to matrix `(row, col)`. T
 
 The separately extracted `DeepLearning/Weights/BasketballController/*.bin` files are Git LFS pointer files in this archive, but their declared sizes agree with the embedded asset. Runtime import must use the complete float values embedded in `BasketballModel.asset`, not the pointer text.
 
+## Sentis batch packaging
+
+`Tools/Onnx/export_basketball_onnx.py` is an offline authoring step that reads the complete
+`BasketballModel.Legacy.asset`. It validates all 58 names and lengths, then emits
+`Assets/AI4AnimationRemake/Resources/Models/BasketballMoEBatch3.onnx` for Unity Sentis 2.6.1.
+There is no Python Runtime dependency and no retraining, quantization, channel reordering or
+model approximation.
+
+The imported graph has a fixed input shape `[3,864]`. Each row independently executes the same
+normalization, 130-feature gating network, Softmax, dynamic eight-expert blending, ELU layers and
+denormalization described above. Its single `[3,596]` transport output packs:
+
+```text
+row[0..587]   = original Basketball model output
+row[588..595] = the same eight gating weights, for HUD/debug telemetry only
+```
+
+Only the first 588 values enter `BasketballOutputDecoder`; the extra eight values never become
+recurrent model channels. The packed layout exists solely to perform one GPU readback instead of
+two. `BasketballSentisBatchTests` compares three deterministic Sentis rows against three
+independent Reference evaluations on CPU and GPUCompute; execution of those tests remains an
+owner-run validation step.
+
 ## Closed-loop state contract
 
 Before inference, the feature builder reads current root, pose, velocities, ball, contacts, phase, and future series. After inference, the decoder:

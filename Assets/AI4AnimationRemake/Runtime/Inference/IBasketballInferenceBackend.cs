@@ -2,8 +2,9 @@ using System;
 
 namespace CrowdEyes.AI4Animation.Basketball
 {
-    public interface IBasketballInferenceBackend
+    public interface IBasketballInferenceBackend : IDisposable
     {
+        string Name { get; }
         int InputSize { get; }
         int OutputSize { get; }
 
@@ -12,5 +13,7 @@ namespace CrowdEyes.AI4Animation.Basketball
         void Evaluate(
             ReadOnlySpan<float> input,
             Span<float> output);
+
+        void CopyGatingWeights(Span<float> destination);
     }
 }

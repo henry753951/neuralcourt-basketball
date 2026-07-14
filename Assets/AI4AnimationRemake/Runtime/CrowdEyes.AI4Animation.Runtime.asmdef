@@ -3,7 +3,11 @@
   "rootNamespace": "CrowdEyes.AI4Animation",
   "references": [
     "Unity.InputSystem",
-    "Unity.ugui"
+    "Unity.ugui",
+    "Unity.Burst",
+    "Unity.Collections",
+    "Unity.Mathematics",
+    "Unity.InferenceEngine"
   ],
   "includePlatforms": [],
   "excludePlatforms": [],

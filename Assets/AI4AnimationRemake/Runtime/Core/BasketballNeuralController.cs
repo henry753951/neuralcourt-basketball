@@ -10,7 +10,6 @@ namespace CrowdEyes.AI4Animation.Basketball
     {
         private const float WalkFactor = 3.75f;
         private const float SprintFactor = 2.5f;
-        private const int MaximumCatchUpTicks = 4;
         private static readonly ProfilerMarker ControlMarker = new("Basketball.Control");
         private static readonly ProfilerMarker BallMarker = new("Basketball.Ball");
 
@@ -21,17 +20,20 @@ namespace CrowdEyes.AI4Animation.Basketball
 
         private readonly float[] input = new float[BasketballModelAsset.InputFeatureCount];
         private readonly float[] output = new float[BasketballModelAsset.OutputFeatureCount];
+        private readonly float[] externalGatingWeights =
+            new float[BasketballModelAsset.ExpertCount];
         private readonly BasketballFeatureBuilder featureBuilder = new();
         private readonly BasketballOutputDecoder outputDecoder = new();
         private readonly BasketballPoseBuffer previousPose = new();
         private readonly BasketballPoseBuffer currentPose = new();
 
-        private BasketballReferenceBackend backend;
+        private IBasketballInferenceBackend backend;
         private BasketballAgentState state;
         private BasketballPoseApplicator poseApplicator;
         private BasketballTwistCorrector twistCorrector;
         private BasketballRootCollisionResolver collisionResolver;
         private BasketballLegacyContactIK contactIK;
+        private ThirdPersonOrbitCamera orbitCamera;
         private BasketballIntent intent;
         private bool intentOverride;
         private float accumulator;
@@ -41,11 +43,44 @@ namespace CrowdEyes.AI4Animation.Basketball
         private IBasketballPossessionAuthority possessionAuthority;
         private Transform passTarget;
         private Vector3 passTargetOffset;
+        private BasketballSentisBatchScheduler externalBatchScheduler;
+        private float externalInterpolationAlpha = 1f;
 
         public bool IsInitialized => initialized;
+        public BasketballRuntimeSettings RuntimeSettings => rig != null
+            ? rig.RuntimeSettings
+            : BasketballRuntimeSettings.LoadDefault();
+        public int NeuralTickRate => rig != null
+            ? rig.NeuralTickRate
+            : BasketballRuntimeSettings.CanonicalNeuralTickRate;
         public int SimulationTickCount => state?.TickCount ?? 0;
         public BasketballAgentState State => state;
         public bool IsCarrier => state != null && state.Carrier;
+        public string InferenceBackendName
+        {
+            get
+            {
+                if (externalBatchScheduler != null)
+                {
+                    return externalBatchScheduler.BackendName;
+                }
+                if (rig != null &&
+                    rig.InferenceBackend == BasketballInferenceBackendType.SentisGpuBatch &&
+                    backend != null)
+                {
+                    return $"{backend.Name} FALLBACK";
+                }
+                return backend?.Name ?? "UNINITIALIZED";
+            }
+        }
+        public float InferenceRoundTripMilliseconds => externalBatchScheduler != null
+            ? externalBatchScheduler.LastRoundTripMilliseconds
+            : -1f;
+        public bool IsInferencePending => externalBatchScheduler != null &&
+                                          externalBatchScheduler.IsReadbackPending;
+        public bool WantsSentisBatch => rig != null &&
+                                         rig.InferenceBackend ==
+                                         BasketballInferenceBackendType.SentisGpuBatch;
         public BasketballIntent CurrentIntent => intent;
         public BasketballBallAuthorityState BallState =>
             rig != null && rig.Ball != null ? rig.Ball.State : BasketballBallAuthorityState.FreePhysics;
@@ -75,15 +110,21 @@ namespace CrowdEyes.AI4Animation.Basketball
             {
                 intent = inputProvider.ReadIntent();
             }
-            accumulator += Mathf.Min(Time.deltaTime, tickInterval * MaximumCatchUpTicks);
+            if (externalBatchScheduler != null)
+            {
+                return;
+            }
+            RefreshTickInterval();
+            int maximumCatchUpTicks = rig.MaximumCatchUpTicks;
+            accumulator += Mathf.Min(Time.deltaTime, tickInterval * maximumCatchUpTicks);
             int ticks = 0;
-            while (accumulator >= tickInterval && ticks < MaximumCatchUpTicks)
+            while (accumulator >= tickInterval && ticks < maximumCatchUpTicks)
             {
                 SimulateTick();
                 accumulator -= tickInterval;
                 ticks++;
             }
-            if (ticks == MaximumCatchUpTicks && accumulator >= tickInterval)
+            if (ticks == maximumCatchUpTicks && accumulator >= tickInterval)
             {
                 accumulator = tickInterval;
             }
@@ -95,11 +136,25 @@ namespace CrowdEyes.AI4Animation.Basketball
             {
                 return;
             }
-            float alpha = rig.RenderInterpolation ? accumulator / tickInterval : 1f;
+            float alpha = rig.RenderInterpolation
+                ? externalBatchScheduler != null
+                    ? externalInterpolationAlpha
+                    : accumulator / tickInterval
+                : 1f;
+            if (rig.RuntimeSettings != null)
+            {
+                alpha = rig.RuntimeSettings.ShapeInterpolationAlpha(alpha);
+            }
             bool applyBall = possessionAuthority != null
                 ? possessionAuthority.CanWriteBall(this)
                 : state.Carrier;
             poseApplicator.Apply(previousPose, currentPose, alpha, applyBall);
+        }
+
+        private void OnDestroy()
+        {
+            backend?.Dispose();
+            backend = null;
         }
 
         public void Initialize()
@@ -119,8 +174,22 @@ namespace CrowdEyes.AI4Animation.Basketball
             }
 
             tickInterval = 1f / rig.NeuralTickRate;
-            backend = new BasketballReferenceBackend();
-            backend.Initialize(rig.Model);
+            backend = rig.InferenceBackend switch
+            {
+                BasketballInferenceBackendType.Burst => new BasketballBurstBackend(),
+                BasketballInferenceBackendType.SentisGpuBatch => new BasketballBurstBackend(),
+                _ => new BasketballReferenceBackend()
+            };
+            try
+            {
+                backend.Initialize(rig.Model);
+            }
+            catch
+            {
+                backend.Dispose();
+                backend = null;
+                throw;
+            }
             state = new BasketballAgentState();
             state.Initialize(transform, rig.Skeleton, rig.Ball);
             twistCorrector = new BasketballTwistCorrector();
@@ -133,8 +202,32 @@ namespace CrowdEyes.AI4Animation.Basketball
             poseApplicator = new BasketballPoseApplicator(transform, rig.Skeleton, rig.Ball);
             contactIK = new BasketballLegacyContactIK(transform, rig.Skeleton);
             movementCamera = movementCamera != null ? movementCamera : Camera.main;
+            orbitCamera = movementCamera != null
+                ? movementCamera.GetComponent<ThirdPersonOrbitCamera>()
+                : null;
             accumulator = 0f;
             initialized = true;
+        }
+
+        internal void SetRuntimeSettings(BasketballRuntimeSettings value)
+        {
+            rig = rig != null ? rig : GetComponent<BasketballReferenceRig>();
+            rig?.SetRuntimeSettings(value);
+            if (initialized)
+            {
+                RefreshTickInterval();
+            }
+        }
+
+        private void RefreshTickInterval()
+        {
+            float configuredInterval = 1f / Mathf.Max(1, rig.NeuralTickRate);
+            if (Mathf.Approximately(configuredInterval, tickInterval))
+            {
+                return;
+            }
+            tickInterval = configuredInterval;
+            accumulator = Mathf.Min(accumulator, tickInterval);
         }
 
         public void SimulateTick()
@@ -143,22 +236,99 @@ namespace CrowdEyes.AI4Animation.Basketball
             {
                 throw new InvalidOperationException("BasketballNeuralController is not initialized.");
             }
+            if (!PrepareTick())
+            {
+                return;
+            }
+            backend.Evaluate(input, output);
+            CompleteTick(output);
+        }
+
+        internal bool PrepareExternalTick(Span<float> destination)
+        {
+            if (externalBatchScheduler == null)
+            {
+                throw new InvalidOperationException(
+                    "The controller is not registered with a Sentis batch scheduler.");
+            }
+            if (destination.Length < input.Length)
+            {
+                throw new ArgumentException(
+                    $"Expected at least {input.Length} destination floats.",
+                    nameof(destination));
+            }
+            if (!PrepareTick())
+            {
+                return false;
+            }
+            input.AsSpan().CopyTo(destination);
+            return true;
+        }
+
+        internal void CompleteExternalTick(
+            ReadOnlySpan<float> neuralOutput,
+            ReadOnlySpan<float> gatingWeights)
+        {
+            if (neuralOutput.Length < output.Length)
+            {
+                throw new ArgumentException(
+                    $"Expected at least {output.Length} neural output floats.",
+                    nameof(neuralOutput));
+            }
+            neuralOutput.Slice(0, output.Length).CopyTo(output);
+            int gatingCount = Mathf.Min(gatingWeights.Length, externalGatingWeights.Length);
+            gatingWeights.Slice(0, gatingCount).CopyTo(externalGatingWeights);
+            if (gatingCount < externalGatingWeights.Length)
+            {
+                externalGatingWeights.AsSpan(gatingCount).Clear();
+            }
+            CompleteTick(output);
+        }
+
+        internal void CompletePreparedTickLocally()
+        {
+            backend.Evaluate(input, output);
+            CompleteTick(output);
+        }
+
+        internal void SetExternalBatchScheduler(BasketballSentisBatchScheduler scheduler)
+        {
+            externalBatchScheduler = scheduler;
+            externalInterpolationAlpha = scheduler != null ? 0f : 1f;
+            accumulator = 0f;
+            if (scheduler == null)
+            {
+                Array.Clear(externalGatingWeights, 0, externalGatingWeights.Length);
+            }
+        }
+
+        internal void SetExternalInterpolationAlpha(float value)
+        {
+            externalInterpolationAlpha = Mathf.Clamp01(value);
+        }
+
+        private bool PrepareTick()
+        {
             previousPose.Capture(state);
             ApplyControl();
             collisionResolver.Resolve(state);
             featureBuilder.Build(state, input);
-            if (!ValidateFinite(input, "input", out int invalidInput))
+            if (ValidateFinite(input, "input", out int invalidInput))
             {
-                FailNonFinite("input", invalidInput);
-                return;
+                return true;
             }
-            backend.Evaluate(input, output);
-            if (!ValidateFinite(output, "output", out int invalidOutput))
+            FailNonFinite("input", invalidInput);
+            return false;
+        }
+
+        private void CompleteTick(float[] values)
+        {
+            if (!ValidateFinite(values, "output", out int invalidOutput))
             {
                 FailNonFinite("output", invalidOutput);
                 return;
             }
-            outputDecoder.Decode(state, output);
+            outputDecoder.Decode(state, values);
             // The SIGGRAPH 2020 controller corrects single-child bone twist
             // unconditionally, before any optional contact IK pass.
             twistCorrector.Correct(state);
@@ -249,6 +419,16 @@ namespace CrowdEyes.AI4Animation.Basketball
             if (backend == null)
             {
                 Array.Clear(destination, 0, destination.Length);
+                return;
+            }
+            if (externalBatchScheduler != null)
+            {
+                int count = Mathf.Min(destination.Length, externalGatingWeights.Length);
+                externalGatingWeights.AsSpan(0, count).CopyTo(destination);
+                if (destination.Length > count)
+                {
+                    destination.AsSpan(count).Clear();
+                }
                 return;
             }
             backend.CopyGatingWeights(destination);
@@ -347,10 +527,8 @@ namespace CrowdEyes.AI4Animation.Basketball
                 }
 
                 Vector3 cameraDirection = Vector3.forward;
-                ThirdPersonOrbitCamera orbitCamera = null;
                 if (movementCamera != null)
                 {
-                    orbitCamera = movementCamera.GetComponent<ThirdPersonOrbitCamera>();
                     cameraDirection = orbitCamera != null && orbitCamera.enabled
                         ? orbitCamera.PlanarForward
                         : Vector3.ProjectOnPlane(
@@ -777,6 +955,9 @@ namespace CrowdEyes.AI4Animation.Basketball
             rig = referenceRig;
             inputProvider = provider;
             movementCamera = camera;
+            orbitCamera = movementCamera != null
+                ? movementCamera.GetComponent<ThirdPersonOrbitCamera>()
+                : null;
         }
 #endif
     }

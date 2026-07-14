@@ -254,6 +254,66 @@
     background-color: rgb(72, 190, 255);
 }
 
+.performance-card {
+    top: 84px;
+    right: 18px;
+    width: 250px;
+    height: 332px;
+}
+
+.performance-card.has-pressure {
+    border-top-color: rgba(255, 174, 32, 0.62);
+    border-right-color: rgba(255, 174, 32, 0.38);
+    border-bottom-color: rgba(255, 174, 32, 0.38);
+    border-left-color: rgba(255, 174, 32, 0.62);
+}
+
+.performance-heading {
+    height: 42px;
+    margin-bottom: 6px;
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
+}
+
+.performance-title {
+    font-size: 14px;
+}
+
+.performance-row {
+    height: 23px;
+    padding-left: 7px;
+    padding-right: 7px;
+    margin-bottom: 1px;
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
+    border-radius: 5px;
+    background-color: rgba(255, 255, 255, 0.035);
+}
+
+.performance-name {
+    color: rgb(141, 153, 170);
+    font-size: 8px;
+    -unity-font-style: bold;
+    letter-spacing: 0.7px;
+}
+
+.performance-value {
+    color: rgb(229, 235, 243);
+    font-size: 10px;
+    -unity-font-style: bold;
+}
+
+.performance-primary {
+    color: rgb(83, 224, 151);
+    font-size: 13px;
+}
+
+.performance-accent {
+    color: rgb(116, 204, 255);
+}
+
 .expert-card {
     left: 18px;
     bottom: 18px;

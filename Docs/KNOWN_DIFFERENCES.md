@@ -8,8 +8,8 @@ path, IK, UI, and debug visualization are the behavior baseline for subsequent p
 
 ## Open differences
 
-- Phase 2 intentionally uses a custom Unity 6 third-person orbit camera rather than the original
-  fixed camera. The disabled `BasketballLegacyCamera` component remains available for A/B checks.
+- Phase 2 uses the custom Unity 6 third-person orbit camera rather than the original fixed camera;
+  the superseded legacy camera component has been removed.
 - Keyboard/mouse is now the default and gamepad is secondary compatibility. Holding right mouse
   enters Ball Control Mode so normal mouse movement can orbit the camera.
 - A future AI route controller will provide `BasketballIntent` directly; no path planner is part
@@ -23,8 +23,17 @@ path, IK, UI, and debug visualization are the behavior baseline for subsequent p
   distance and Touch-before-Secure arbitration; it does not claim a learned poke animation.
 - Unselected players intentionally receive Stand rather than Hold. Only an intended receiver in
   `PassFlight` receives catch guidance; this prevents a remote ball from pulling idle hands/body.
-- Optimized inference, low-frequency experiments, and production
-  performance sign-off remain later phases.
+- The three-player demo now has an experimental official Sentis 2.6.1 GPUCompute batch path.
+  It is generated from the original weights and retains one 30 Hz closed-loop state per player,
+  but owner-run numeric, visual and performance acceptance is still pending. Burst remains its
+  all-player fallback.
+- Neural scheduling can now be selected from one shared profile. The 30 Hz mode remains the
+  formal reference. Lower 20/15/10 Hz modes use render-time pose interpolation but do not retime
+  the 2020 model's trained equations, so they remain experimental until dribble, contact, phase,
+  shoot/release and foot-slide quality are accepted.
+- The Unity 6 remake applies a configurable realtime-shadow budget at match startup. This keeps
+  scene lights enabled while suppressing duplicate shadow maps that are not part of the original
+  neural behavior.
 
 ## Intentional differences
 

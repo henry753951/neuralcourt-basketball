@@ -4,6 +4,7 @@ using System.IO;
 using CrowdEyes.AI4Animation.Basketball;
 using UnityEditor;
 using UnityEditor.SceneManagement;
+using Unity.InferenceEngine;
 using UnityEngine;
 using UnityEngine.EventSystems;
 using UnityEngine.InputSystem.UI;
@@ -32,6 +33,12 @@ namespace CrowdEyes.AI4Animation.Editor
         private const string ModelPath =
             "Assets/AI4AnimationRemake/Models/BasketballModel.asset";
 
+        private const string SentisModelPath =
+            "Assets/AI4AnimationRemake/Resources/Models/BasketballMoEBatch3.onnx";
+
+        private const string RuntimeSettingsPath =
+            "Assets/AI4AnimationRemake/Resources/Settings/BasketballRuntimeSettings.asset";
+
         private const string MaterialFolder =
             "Assets/AI4AnimationRemake/Materials";
 
@@ -58,6 +65,14 @@ namespace CrowdEyes.AI4Animation.Editor
             if (!model.Validate(out string modelReason))
             {
                 throw new InvalidOperationException(modelReason);
+            }
+            ModelAsset sentisModel = AssetDatabase.LoadAssetAtPath<ModelAsset>(SentisModelPath);
+            BasketballRuntimeSettings runtimeSettings =
+                AssetDatabase.LoadAssetAtPath<BasketballRuntimeSettings>(RuntimeSettingsPath);
+            if (runtimeSettings == null)
+            {
+                throw new InvalidOperationException(
+                    $"Missing runtime settings at {RuntimeSettingsPath}.");
             }
 
             Scene targetScene = EditorSceneManager.NewScene(
@@ -156,20 +171,13 @@ namespace CrowdEyes.AI4Animation.Editor
                     throw new InvalidOperationException("Legacy Camera root does not contain a Camera component.");
                 }
                 camera.gameObject.tag = "MainCamera";
-                BasketballLegacyCamera legacyCamera = camera.gameObject.GetComponent<BasketballLegacyCamera>();
-                if (legacyCamera == null)
-                {
-                    legacyCamera = camera.gameObject.AddComponent<BasketballLegacyCamera>();
-                }
-                legacyCamera.Configure(playerObjects[0].transform);
-                legacyCamera.enabled = false;
                 ThirdPersonOrbitCamera orbitCamera =
                     camera.gameObject.GetComponent<ThirdPersonOrbitCamera>();
                 if (orbitCamera == null)
                 {
                     orbitCamera = camera.gameObject.AddComponent<ThirdPersonOrbitCamera>();
                 }
-                orbitCamera.Configure(playerObjects[0].transform);
+                orbitCamera.Configure(playerObjects[0].transform, runtimeSettings);
                 orbitCamera.enabled = true;
 
                 Vector3 basePlayerPosition = playerObjects[0].transform.position;
@@ -214,13 +222,17 @@ namespace CrowdEyes.AI4Animation.Editor
                 possessionManager.Configure(members, ballController);
                 BasketballMatchController matchController =
                     matchRoot.AddComponent<BasketballMatchController>();
+                BasketballSentisBatchScheduler sentisScheduler =
+                    matchRoot.AddComponent<BasketballSentisBatchScheduler>();
+                sentisScheduler.Configure(members, sentisModel);
                 matchController.Configure(
                     members,
                     ballController,
                     possessionManager,
                     camera,
                     orbitCamera,
-                    uiController);
+                    uiController,
+                    runtimeSettings);
                 ConfigureEventSystem(eventSystemRoot);
 
                 EditorSceneManager.MarkSceneDirty(targetScene);
@@ -321,6 +333,11 @@ namespace CrowdEyes.AI4Animation.Editor
             {
                 lineRenderer = player.AddComponent<LineRenderer>();
             }
+            // BasketballDebugVisualizer initializes this renderer at runtime. Leaving the
+            // default two-point, material-less renderer enabled draws a magenta quad at
+            // the world origin while the scene is in Edit Mode.
+            lineRenderer.enabled = false;
+            lineRenderer.positionCount = 0;
             lineRenderer.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
             lineRenderer.receiveShadows = false;
             BasketballDebugVisualizer visualizer =

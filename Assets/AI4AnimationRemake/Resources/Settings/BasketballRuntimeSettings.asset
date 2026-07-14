@@ -1,0 +1,52 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 78a15e606df34db9a2e4db38df1138f1, type: 3}
+  m_Name: BasketballRuntimeSettings
+  m_EditorClassIdentifier: CrowdEyes.AI4Animation.Runtime::CrowdEyes.AI4Animation.Basketball.BasketballRuntimeSettings
+  neuralTickRate: 30
+  interpolationMode: 1
+  maximumCatchUpTicks: 4
+  enableContactIK: 1
+  enableDebugDraw: 0
+  deterministicMode: 1
+  inferenceBackend: 2
+  targetFrameRate: -1
+  vSyncCount: 0
+  mouseSensitivity: 0.12
+  minimumPitch: -15
+  maximumPitch: 70
+  recenterPitch: 18
+  rotationSmoothTime: 0.045
+  cameraDistance: 5.8
+  minimumCameraDistance: 1.5
+  maximumCameraDistance: 9
+  zoomSensitivity: 0.015
+  positionSmoothTime: 0.06
+  distanceSmoothTime: 0.08
+  cameraCollisionEnabled: 1
+  cameraCollisionMask:
+    serializedVersion: 2
+    m_Bits: 513
+  cameraCollisionRadius: 0.2
+  cameraCollisionPadding: 0.08
+  minimumCollisionDistance: 0.35
+  collisionQueryIntervalFrames: 1
+  useOcclusionCulling: 1
+  allowDynamicResolution: 0
+  lockCursorOnPlay: 1
+  applyRealtimeShadowBudget: 1
+  maximumShadowedDirectionalLights: 1
+  maximumShadowedAdditionalLights: 0
+  telemetryRefreshRate: 15
+  performanceRefreshRate: 4
+  controlDiskRefreshRate: 30
+  frameTimingCaptureInterval: 4

@@ -43,6 +43,7 @@ namespace CrowdEyes.AI4Animation.Basketball
 
         private bool initialized;
 
+        public string Name => "REFERENCE C#";
         public int InputSize => BasketballModelAsset.InputFeatureCount;
         public int OutputSize => BasketballModelAsset.OutputFeatureCount;
         public bool IsInitialized => initialized;
@@ -134,6 +135,11 @@ namespace CrowdEyes.AI4Animation.Basketball
             {
                 destination.Slice(count).Clear();
             }
+        }
+
+        public void Dispose()
+        {
+            // All model and scratch buffers are managed arrays owned by Unity/the backend.
         }
 
         private void EvaluateInternal(ReadOnlySpan<float> input, Span<float> output)

@@ -13,6 +13,8 @@ namespace CrowdEyes.AI4Animation.Basketball
         [SerializeField] private Camera viewCamera;
         [SerializeField] private ThirdPersonOrbitCamera orbitCamera;
         [SerializeField] private BasketballUIToolkitController hud;
+        [SerializeField] private BasketballSentisBatchScheduler sentisBatchScheduler;
+        [SerializeField] private BasketballRuntimeSettings runtimeSettings;
         [SerializeField, Range(0.5f, 0.999f)] private float passLockDot = 0.82f;
         [SerializeField, Min(0.05f)] private float passCommitSeconds = 0.2f;
         [SerializeField, Min(0.25f)] private float passTimeoutSeconds = 1.5f;
@@ -28,6 +30,7 @@ namespace CrowdEyes.AI4Animation.Basketball
         private bool passCommitted;
         private bool passFake;
         private bool initialized;
+        private bool runtimeSettingsPrepared;
         private int hudStatusKey = int.MinValue;
 
         public int PlayerCount => players == null ? 0 : players.Length;
@@ -38,9 +41,15 @@ namespace CrowdEyes.AI4Animation.Basketball
             : null;
         public BasketballPossessionManager PossessionManager => possessionManager;
         public BasketballTeamMember LockedTarget => lockedTarget;
+        public BasketballSentisBatchScheduler SentisBatchScheduler => sentisBatchScheduler;
         public bool IsTargetSelectionActive { get; private set; }
         public bool IsPassCommitted => passCommitted;
         public bool IsPassFakeActive => passFake;
+
+        private void Awake()
+        {
+            PrepareRuntimeSettings();
+        }
 
         private void Start()
         {
@@ -71,6 +80,7 @@ namespace CrowdEyes.AI4Animation.Basketball
 
         public void InitializeMatch()
         {
+            PrepareRuntimeSettings();
             if (initialized || players == null || players.Length == 0 || ball == null ||
                 possessionManager == null)
             {
@@ -94,9 +104,49 @@ namespace CrowdEyes.AI4Animation.Basketball
 
             activePlayerIndex = 0;
             possessionManager.Initialize();
+            EnsureSentisBatchScheduler();
             initialized = true;
             ApplyActivePlayer();
             UpdateIndicators();
+        }
+
+        private void PrepareRuntimeSettings()
+        {
+            if (runtimeSettingsPrepared)
+            {
+                return;
+            }
+            runtimeSettings = runtimeSettings != null
+                ? runtimeSettings
+                : BasketballRuntimeSettings.LoadDefault();
+            if (runtimeSettings == null)
+            {
+                Debug.LogError(
+                    $"Missing Basketball runtime profile at Resources/" +
+                    $"{BasketballRuntimeSettings.DefaultResourcePath}.asset.",
+                    this);
+                return;
+            }
+
+            runtimeSettings.ApplyApplicationSettings();
+            int disabledShadowCasters = runtimeSettings.ApplyShadowBudget();
+            if (disabledShadowCasters > 0)
+            {
+                Debug.Log(
+                    $"Basketball runtime shadow budget disabled {disabledShadowCasters} " +
+                    "redundant realtime shadow caster(s). Lighting remains enabled.",
+                    this);
+            }
+
+            orbitCamera?.SetRuntimeSettings(runtimeSettings);
+            if (players != null)
+            {
+                for (int index = 0; index < players.Length; index++)
+                {
+                    players[index]?.Controller?.SetRuntimeSettings(runtimeSettings);
+                }
+            }
+            runtimeSettingsPrepared = true;
         }
 
         public void SelectPlayer(int index)
@@ -509,6 +559,32 @@ namespace CrowdEyes.AI4Animation.Basketball
                 : null;
         }
 
+        private void EnsureSentisBatchScheduler()
+        {
+            if (players == null ||
+                players.Length != BasketballSentisBatchScheduler.BatchSize)
+            {
+                return;
+            }
+            for (int index = 0; index < players.Length; index++)
+            {
+                if (players[index] == null || players[index].Controller == null ||
+                    !players[index].Controller.WantsSentisBatch)
+                {
+                    return;
+                }
+            }
+
+            sentisBatchScheduler = sentisBatchScheduler != null
+                ? sentisBatchScheduler
+                : GetComponent<BasketballSentisBatchScheduler>();
+            if (sentisBatchScheduler == null)
+            {
+                sentisBatchScheduler = gameObject.AddComponent<BasketballSentisBatchScheduler>();
+            }
+            sentisBatchScheduler.ConfigureRuntime(players);
+        }
+
         private void CancelPass()
         {
             if (passCommitted)
@@ -531,7 +607,8 @@ namespace CrowdEyes.AI4Animation.Basketball
             BasketballPossessionManager possession,
             Camera camera,
             ThirdPersonOrbitCamera orbit,
-            BasketballUIToolkitController ui)
+            BasketballUIToolkitController ui,
+            BasketballRuntimeSettings settings)
         {
             players = teamMembers;
             ball = sharedBall;
@@ -539,6 +616,7 @@ namespace CrowdEyes.AI4Animation.Basketball
             viewCamera = camera;
             orbitCamera = orbit;
             hud = ui;
+            runtimeSettings = settings;
             passLockDot = 0.82f;
             passCommitSeconds = 0.2f;
             passTimeoutSeconds = 1.5f;

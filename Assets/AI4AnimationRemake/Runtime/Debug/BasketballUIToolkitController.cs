@@ -7,7 +7,7 @@ namespace CrowdEyes.AI4Animation.Basketball
     [RequireComponent(typeof(UIDocument))]
     public sealed class BasketballUIToolkitController : MonoBehaviour
     {
-        private const float RefreshInterval = 1f / 15f;
+        private const float BarUpdateEpsilon = 0.1f;
         private const float MomentumScale = 2f / BasketballAgentState.KeyCount;
 
         private static readonly Color DiskBackground = new(0.025f, 0.04f, 0.065f, 0.96f);
@@ -29,11 +29,16 @@ namespace CrowdEyes.AI4Animation.Basketball
         private readonly VisualElement[] styleBars = new VisualElement[BasketballAgentState.StyleCount];
         private readonly VisualElement[] contactBars = new VisualElement[BasketballAgentState.ContactCount];
         private readonly VisualElement[] expertBars = new VisualElement[BasketballModelAsset.ExpertCount];
+        private readonly float[] lastStylePercent = new float[BasketballAgentState.StyleCount];
+        private readonly float[] lastContactPercent = new float[BasketballAgentState.ContactCount];
+        private readonly float[] lastExpertPercent = new float[BasketballModelAsset.ExpertCount];
+        private readonly BasketballPerformanceMonitor performanceMonitor = new();
 
         private UIDocument document;
         private VisualElement root;
         private VisualElement telemetryCard;
         private VisualElement expertCard;
+        private VisualElement performanceCard;
         private VisualElement controlCard;
         private VisualElement controlDisk;
         private Button hudToggle;
@@ -42,7 +47,29 @@ namespace CrowdEyes.AI4Animation.Basketball
         private Label tickLabel;
         private Label controlState;
         private Label modeLabel;
+        private Label fpsLabel;
+        private Label frameTimeLabel;
+        private Label mainThreadLabel;
+        private Label gpuTimeLabel;
+        private Label gcLabel;
+        private Label inferenceLabel;
+        private Label sentisLatencyLabel;
+        private Label neuralPipelineLabel;
+        private Label animationLabel;
+        private Label cameraCpuLabel;
+        private Label neuralRateLabel;
+        private Label backendLabel;
         private float refreshTimer;
+        private float performanceRefreshTimer;
+        private float controlDiskRefreshTimer;
+        private bool telemetryInitialized;
+        private bool hasControlState;
+        private bool lastControlling;
+        private BasketballBallAuthorityState lastBallState;
+        private int lastTickCount = -1;
+        private bool performanceStarted;
+        private string lastModeText;
+        private string lastBackendText;
         private bool isBound;
 
         public bool IsBound => isBound;
@@ -51,16 +78,28 @@ namespace CrowdEyes.AI4Animation.Basketball
         private void OnEnable()
         {
             TryBind();
+            if (performanceStarted)
+            {
+                performanceMonitor.Start();
+            }
         }
 
         private void Start()
         {
             TryBind();
+            performanceMonitor.Start();
+            performanceStarted = true;
+            performanceMonitor.ResetTickRate(
+                controller != null && controller.IsInitialized
+                    ? controller.SimulationTickCount
+                    : -1);
             RefreshTelemetry();
+            RefreshPerformance();
         }
 
         private void OnDisable()
         {
+            performanceMonitor.Stop();
             Unbind();
         }
 
@@ -72,16 +111,59 @@ namespace CrowdEyes.AI4Animation.Basketball
                 return;
             }
 
-            controlDisk.MarkDirtyRepaint();
-            bool controlling = inputProvider != null && inputProvider.IsBallControlMode;
-            controlCard.EnableInClassList("is-controlling", controlling);
-            controlState.text = controlling ? "ACTIVE" : "IDLE";
+            float deltaTime = Time.unscaledDeltaTime;
+            BasketballRuntimeSettings settings = controller != null
+                ? controller.RuntimeSettings
+                : BasketballRuntimeSettings.LoadDefault();
+            performanceMonitor.Tick(
+                deltaTime,
+                controller != null && controller.IsInitialized
+                    ? controller.SimulationTickCount
+                    : -1,
+                settings != null ? settings.FrameTimingCaptureInterval : 4);
 
-            refreshTimer += Time.unscaledDeltaTime;
-            if (refreshTimer >= RefreshInterval)
+            bool controlling = inputProvider != null && inputProvider.IsBallControlMode;
+            if (!hasControlState || controlling != lastControlling)
+            {
+                controlCard.EnableInClassList("is-controlling", controlling);
+                controlState.text = controlling ? "ACTIVE" : "IDLE";
+                lastControlling = controlling;
+                hasControlState = true;
+            }
+
+            controlDiskRefreshTimer += deltaTime;
+            float controlDiskInterval = settings != null
+                ? settings.ControlDiskRefreshInterval
+                : 1f / 30f;
+            if (controlDiskRefreshTimer >= controlDiskInterval)
+            {
+                controlDiskRefreshTimer = 0f;
+                controlDisk.MarkDirtyRepaint();
+            }
+
+            if (!telemetryVisible)
+            {
+                return;
+            }
+
+            refreshTimer += deltaTime;
+            float telemetryInterval = settings != null
+                ? settings.TelemetryRefreshInterval
+                : 1f / 15f;
+            if (refreshTimer >= telemetryInterval)
             {
                 refreshTimer = 0f;
                 RefreshTelemetry();
+            }
+
+            performanceRefreshTimer += deltaTime;
+            float performanceInterval = settings != null
+                ? settings.PerformanceRefreshInterval
+                : 1f / 4f;
+            if (performanceRefreshTimer >= performanceInterval)
+            {
+                performanceRefreshTimer = 0f;
+                RefreshPerformance();
             }
         }
 
@@ -106,6 +188,7 @@ namespace CrowdEyes.AI4Animation.Basketball
 
             telemetryCard = root.Q<VisualElement>("telemetry-card");
             expertCard = root.Q<VisualElement>("expert-card");
+            performanceCard = root.Q<VisualElement>("performance-card");
             controlCard = root.Q<VisualElement>("control-card");
             controlDisk = root.Q<VisualElement>("control-disk");
             hudToggle = root.Q<Button>("hud-toggle");
@@ -114,10 +197,29 @@ namespace CrowdEyes.AI4Animation.Basketball
             tickLabel = root.Q<Label>("tick-label");
             controlState = root.Q<Label>("control-state");
             modeLabel = root.Q<Label>("mode-label");
+            fpsLabel = root.Q<Label>("fps-label");
+            frameTimeLabel = root.Q<Label>("frame-time-label");
+            mainThreadLabel = root.Q<Label>("main-thread-label");
+            gpuTimeLabel = root.Q<Label>("gpu-time-label");
+            gcLabel = root.Q<Label>("gc-label");
+            inferenceLabel = root.Q<Label>("inference-label");
+            sentisLatencyLabel = root.Q<Label>("sentis-latency-label");
+            neuralPipelineLabel = root.Q<Label>("neural-pipeline-label");
+            animationLabel = root.Q<Label>("animation-label");
+            cameraCpuLabel = root.Q<Label>("camera-cpu-label");
+            neuralRateLabel = root.Q<Label>("neural-rate-label");
+            backendLabel = root.Q<Label>("backend-label");
 
-            if (telemetryCard == null || expertCard == null || controlCard == null ||
+            if (telemetryCard == null || expertCard == null || performanceCard == null ||
+                controlCard == null ||
                 controlDisk == null || hudToggle == null || debugToggle == null ||
-                ballState == null || tickLabel == null || controlState == null)
+                ballState == null || tickLabel == null || controlState == null ||
+                fpsLabel == null || frameTimeLabel == null || mainThreadLabel == null ||
+                gpuTimeLabel == null || gcLabel == null || inferenceLabel == null ||
+                sentisLatencyLabel == null ||
+                neuralPipelineLabel == null || animationLabel == null ||
+                cameraCpuLabel == null ||
+                neuralRateLabel == null || backendLabel == null)
             {
                 return;
             }
@@ -152,6 +254,7 @@ namespace CrowdEyes.AI4Animation.Basketball
             hudToggle.clicked -= ToggleTelemetry;
             debugToggle.clicked -= ToggleDebug;
             controlDisk.generateVisualContent -= DrawControlDisk;
+            hasControlState = false;
             isBound = false;
         }
 
@@ -159,6 +262,13 @@ namespace CrowdEyes.AI4Animation.Basketball
         {
             telemetryVisible = !telemetryVisible;
             ApplyVisibility();
+            if (telemetryVisible)
+            {
+                refreshTimer = 0f;
+                performanceRefreshTimer = 0f;
+                RefreshTelemetry();
+                RefreshPerformance();
+            }
         }
 
         private void ToggleDebug()
@@ -177,6 +287,7 @@ namespace CrowdEyes.AI4Animation.Basketball
             DisplayStyle display = telemetryVisible ? DisplayStyle.Flex : DisplayStyle.None;
             telemetryCard.style.display = display;
             expertCard.style.display = display;
+            performanceCard.style.display = display;
             hudToggle.EnableInClassList("is-active", telemetryVisible);
             debugToggle.EnableInClassList(
                 "is-active", visualizer != null && visualizer.ShowDebugLines);
@@ -184,33 +295,106 @@ namespace CrowdEyes.AI4Animation.Basketball
 
         private void RefreshTelemetry()
         {
-            if (!isBound || controller == null || !controller.IsInitialized)
+            if (!telemetryVisible || !isBound || controller == null || !controller.IsInitialized)
             {
                 return;
             }
 
             BasketballAgentState state = controller.State;
             int pivot = BasketballAgentState.Pivot;
-            ballState.text = controller.BallState.ToString().ToUpperInvariant();
-            tickLabel.text = $"TICK {state.TickCount:000000}";
+            BasketballBallAuthorityState currentBallState = controller.BallState;
+            if (!telemetryInitialized || currentBallState != lastBallState)
+            {
+                ballState.text = BallStateText(currentBallState);
+                lastBallState = currentBallState;
+            }
+            if (!telemetryInitialized || state.TickCount != lastTickCount)
+            {
+                tickLabel.text = $"TICK {state.TickCount:000000}";
+                lastTickCount = state.TickCount;
+            }
 
             for (int channel = 0; channel < styleBars.Length; channel++)
             {
                 float value = state.Styles[BasketballAgentState.StyleIndex(pivot, channel)];
-                styleBars[channel].style.width = Length.Percent(100f * Mathf.Clamp01(value));
+                float percent = 100f * Mathf.Clamp01(value);
+                if (!telemetryInitialized ||
+                    Mathf.Abs(percent - lastStylePercent[channel]) >= BarUpdateEpsilon)
+                {
+                    styleBars[channel].style.width = Length.Percent(percent);
+                    lastStylePercent[channel] = percent;
+                }
             }
             for (int channel = 0; channel < contactBars.Length; channel++)
             {
                 float value = state.Contacts[BasketballAgentState.ContactIndex(pivot, channel)];
-                contactBars[channel].style.width = Length.Percent(100f * Mathf.Clamp01(value));
+                float percent = 100f * Mathf.Clamp01(value);
+                if (!telemetryInitialized ||
+                    Mathf.Abs(percent - lastContactPercent[channel]) >= BarUpdateEpsilon)
+                {
+                    contactBars[channel].style.width = Length.Percent(percent);
+                    lastContactPercent[channel] = percent;
+                }
             }
 
             controller.CopyGatingWeights(gating);
             for (int expert = 0; expert < expertBars.Length; expert++)
             {
-                expertBars[expert].style.height =
-                    Length.Percent(100f * Mathf.Clamp01(gating[expert]));
+                float percent = 100f * Mathf.Clamp01(gating[expert]);
+                if (!telemetryInitialized ||
+                    Mathf.Abs(percent - lastExpertPercent[expert]) >= BarUpdateEpsilon)
+                {
+                    expertBars[expert].style.height = Length.Percent(percent);
+                    lastExpertPercent[expert] = percent;
+                }
             }
+            telemetryInitialized = true;
+        }
+
+        private void RefreshPerformance()
+        {
+            if (!telemetryVisible || !isBound)
+            {
+                return;
+            }
+
+            performanceMonitor.Sample();
+            string backendText = controller != null
+                ? controller.InferenceBackendName
+                : "UNINITIALIZED";
+            if (backendText != lastBackendText)
+            {
+                backendLabel.text = backendText;
+                lastBackendText = backendText;
+            }
+            fpsLabel.text = performanceMonitor.FramesPerSecond > 0f
+                ? $"{performanceMonitor.FramesPerSecond:F0}"
+                : "N/A";
+            frameTimeLabel.text = MillisecondsText(performanceMonitor.FrameMilliseconds);
+            mainThreadLabel.text = MillisecondsText(performanceMonitor.MainThreadMilliseconds);
+            gpuTimeLabel.text = MillisecondsText(performanceMonitor.GpuFrameMilliseconds);
+            gcLabel.text = BytesText(performanceMonitor.GcAllocatedBytesPerFrame);
+            inferenceLabel.text = MillisecondsText(performanceMonitor.InferenceMilliseconds);
+            float inferenceRoundTrip = controller != null
+                ? controller.InferenceRoundTripMilliseconds
+                : -1f;
+            sentisLatencyLabel.text = inferenceRoundTrip >= 0f
+                ? controller.IsInferencePending
+                    ? $"{inferenceRoundTrip:F2} ms • RUN"
+                    : $"{inferenceRoundTrip:F2} ms"
+                : "N/A";
+            neuralPipelineLabel.text =
+                MillisecondsText(performanceMonitor.NeuralPipelineMilliseconds);
+            animationLabel.text = MillisecondsText(performanceMonitor.AnimationMilliseconds);
+            cameraCpuLabel.text = MillisecondsText(performanceMonitor.CameraMilliseconds);
+            neuralRateLabel.text = performanceMonitor.NeuralTicksPerSecond > 0f
+                ? $"{performanceMonitor.NeuralTicksPerSecond:F1} Hz"
+                : "WARMUP";
+
+            bool underPressure =
+                performanceMonitor.FrameMilliseconds > 16.7f ||
+                performanceMonitor.GcAllocatedBytesPerFrame > 0L;
+            performanceCard.EnableInClassList("has-pressure", underPressure);
         }
 
         private void DrawControlDisk(MeshGenerationContext context)
@@ -377,7 +561,23 @@ namespace CrowdEyes.AI4Animation.Basketball
             controller = neuralController;
             inputProvider = provider;
             visualizer = debugVisualizer;
-            refreshTimer = RefreshInterval;
+            telemetryInitialized = false;
+            BasketballRuntimeSettings settings = controller != null
+                ? controller.RuntimeSettings
+                : BasketballRuntimeSettings.LoadDefault();
+            refreshTimer = settings != null ? settings.TelemetryRefreshInterval : 1f / 15f;
+            performanceRefreshTimer = settings != null
+                ? settings.PerformanceRefreshInterval
+                : 0.25f;
+            controlDiskRefreshTimer = settings != null
+                ? settings.ControlDiskRefreshInterval
+                : 1f / 30f;
+            hasControlState = false;
+            lastBackendText = null;
+            performanceMonitor.ResetTickRate(
+                controller != null && controller.IsInitialized
+                    ? controller.SimulationTickCount
+                    : -1);
             if (isBound)
             {
                 controlDisk.MarkDirtyRepaint();
@@ -387,10 +587,33 @@ namespace CrowdEyes.AI4Animation.Basketball
 
         public void SetMatchStatus(string value)
         {
-            if (modeLabel != null)
+            if (modeLabel != null && value != lastModeText)
             {
                 modeLabel.text = value;
+                lastModeText = value;
             }
+        }
+
+        private static string BallStateText(BasketballBallAuthorityState value) => value switch
+        {
+            BasketballBallAuthorityState.Controlled => "CONTROLLED",
+            BasketballBallAuthorityState.Held => "HELD",
+            BasketballBallAuthorityState.Released => "RELEASED",
+            BasketballBallAuthorityState.FreePhysics => "FREE PHYSICS",
+            BasketballBallAuthorityState.Reacquiring => "REACQUIRING",
+            _ => "UNKNOWN"
+        };
+
+        private static string MillisecondsText(float value) =>
+            value >= 0f ? $"{value:F2} ms" : "N/A";
+
+        private static string BytesText(long value)
+        {
+            if (value < 0L)
+            {
+                return "N/A";
+            }
+            return value < 1024L ? $"{value} B" : $"{value / 1024f:F1} KB";
         }
     }
 }

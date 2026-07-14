@@ -1,0 +1,235 @@
+using UnityEngine;
+
+namespace CrowdEyes.AI4Animation.Basketball
+{
+    public enum BasketballPoseInterpolationMode
+    {
+        Disabled,
+        Linear,
+        SmoothStep
+    }
+
+    /// <summary>
+    /// Shared runtime profile for every Basketball agent in a match. The model's
+    /// canonical closed-loop rate remains 30 Hz; lower values are experimental
+    /// scheduling modes and intentionally do not rewrite the model contract.
+    /// </summary>
+    [CreateAssetMenu(
+        fileName = "BasketballRuntimeSettings",
+        menuName = "AI4Animation/Basketball Runtime Settings")]
+    public sealed class BasketballRuntimeSettings : ScriptableObject
+    {
+        public const string DefaultResourcePath = "Settings/BasketballRuntimeSettings";
+        public const int CanonicalNeuralTickRate = 30;
+
+        [Header("Neural Simulation")]
+        [Tooltip("30 Hz is the canonical Basketball 2020 rate. Lower values are experimental and do not retime the trained model mathematics.")]
+        [SerializeField, Range(10, CanonicalNeuralTickRate)]
+        private int neuralTickRate = CanonicalNeuralTickRate;
+        [Tooltip("Presentation-only interpolation between previous/current neural states. It never overwrites recurrent simulation state.")]
+        [SerializeField] private BasketballPoseInterpolationMode interpolationMode =
+            BasketballPoseInterpolationMode.Linear;
+        [SerializeField, Range(1, 8)] private int maximumCatchUpTicks = 4;
+        [SerializeField] private bool enableContactIK = true;
+        [SerializeField] private bool enableDebugDraw;
+        [SerializeField] private bool deterministicMode = true;
+        [SerializeField] private BasketballInferenceBackendType inferenceBackend =
+            BasketballInferenceBackendType.SentisGpuBatch;
+
+        [Header("Application")]
+        [SerializeField, Range(-1, 360)] private int targetFrameRate = -1;
+        [SerializeField, Range(0, 4)] private int vSyncCount;
+
+        [Header("Camera Orbit")]
+        [SerializeField, Min(0.01f)] private float mouseSensitivity = 0.12f;
+        [SerializeField] private float minimumPitch = -15f;
+        [SerializeField] private float maximumPitch = 70f;
+        [SerializeField] private float recenterPitch = 18f;
+        [SerializeField, Min(0f)] private float rotationSmoothTime = 0.045f;
+        [SerializeField, Min(0.1f)] private float cameraDistance = 5.8f;
+        [SerializeField, Min(0.1f)] private float minimumCameraDistance = 1.5f;
+        [SerializeField, Min(0.1f)] private float maximumCameraDistance = 9f;
+        [SerializeField, Min(0.01f)] private float zoomSensitivity = 0.015f;
+        [SerializeField, Min(0f)] private float positionSmoothTime = 0.06f;
+        [SerializeField, Min(0f)] private float distanceSmoothTime = 0.08f;
+
+        [Header("Camera Collision and Culling")]
+        [SerializeField] private bool cameraCollisionEnabled = true;
+        [SerializeField] private LayerMask cameraCollisionMask = (1 << 0) | (1 << 9);
+        [SerializeField, Min(0.01f)] private float cameraCollisionRadius = 0.2f;
+        [SerializeField, Min(0f)] private float cameraCollisionPadding = 0.08f;
+        [SerializeField, Min(0.05f)] private float minimumCollisionDistance = 0.35f;
+        [SerializeField, Range(1, 8)] private int collisionQueryIntervalFrames = 1;
+        [SerializeField] private bool useOcclusionCulling = true;
+        [SerializeField] private bool allowDynamicResolution;
+        [SerializeField] private bool lockCursorOnPlay = true;
+
+        [Header("Rendering Performance")]
+        [Tooltip("Keeps the scene lighting but disables redundant realtime shadow maps.")]
+        [SerializeField] private bool applyRealtimeShadowBudget = true;
+        [SerializeField, Range(0, 4)] private int maximumShadowedDirectionalLights = 1;
+        [SerializeField, Range(0, 8)] private int maximumShadowedAdditionalLights;
+
+        [Header("HUD and Profiling")]
+        [SerializeField, Range(1, 60)] private int telemetryRefreshRate = 15;
+        [SerializeField, Range(1, 30)] private int performanceRefreshRate = 4;
+        [SerializeField, Range(1, 60)] private int controlDiskRefreshRate = 30;
+        [SerializeField, Range(1, 30)] private int frameTimingCaptureInterval = 4;
+
+        private static BasketballRuntimeSettings cachedDefault;
+
+        public int NeuralTickRate => neuralTickRate;
+        public BasketballPoseInterpolationMode InterpolationMode => interpolationMode;
+        public bool RenderInterpolation => interpolationMode != BasketballPoseInterpolationMode.Disabled;
+        public int MaximumCatchUpTicks => maximumCatchUpTicks;
+        public bool EnableContactIK => enableContactIK;
+        public bool EnableDebugDraw => enableDebugDraw;
+        public bool DeterministicMode => deterministicMode;
+        public BasketballInferenceBackendType InferenceBackend => inferenceBackend;
+        public int TargetFrameRate => targetFrameRate;
+        public int VSyncCount => vSyncCount;
+
+        public float MouseSensitivity => mouseSensitivity;
+        public float MinimumPitch => minimumPitch;
+        public float MaximumPitch => maximumPitch;
+        public float RecenterPitch => recenterPitch;
+        public float RotationSmoothTime => rotationSmoothTime;
+        public float CameraDistance => cameraDistance;
+        public float MinimumCameraDistance => minimumCameraDistance;
+        public float MaximumCameraDistance => maximumCameraDistance;
+        public float ZoomSensitivity => zoomSensitivity;
+        public float PositionSmoothTime => positionSmoothTime;
+        public float DistanceSmoothTime => distanceSmoothTime;
+        public bool CameraCollisionEnabled => cameraCollisionEnabled;
+        public LayerMask CameraCollisionMask => cameraCollisionMask;
+        public float CameraCollisionRadius => cameraCollisionRadius;
+        public float CameraCollisionPadding => cameraCollisionPadding;
+        public float MinimumCollisionDistance => minimumCollisionDistance;
+        public int CollisionQueryIntervalFrames => collisionQueryIntervalFrames;
+        public bool UseOcclusionCulling => useOcclusionCulling;
+        public bool AllowDynamicResolution => allowDynamicResolution;
+        public bool LockCursorOnPlay => lockCursorOnPlay;
+
+        public bool ApplyRealtimeShadowBudget => applyRealtimeShadowBudget;
+        public int MaximumShadowedDirectionalLights => maximumShadowedDirectionalLights;
+        public int MaximumShadowedAdditionalLights => maximumShadowedAdditionalLights;
+        public float TelemetryRefreshInterval => 1f / telemetryRefreshRate;
+        public float PerformanceRefreshInterval => 1f / performanceRefreshRate;
+        public float ControlDiskRefreshInterval => 1f / controlDiskRefreshRate;
+        public int FrameTimingCaptureInterval => frameTimingCaptureInterval;
+
+        public static BasketballRuntimeSettings LoadDefault()
+        {
+            cachedDefault = cachedDefault != null
+                ? cachedDefault
+                : Resources.Load<BasketballRuntimeSettings>(DefaultResourcePath);
+            return cachedDefault;
+        }
+
+        public float ShapeInterpolationAlpha(float alpha)
+        {
+            alpha = Mathf.Clamp01(alpha);
+            return interpolationMode == BasketballPoseInterpolationMode.SmoothStep
+                ? alpha * alpha * (3f - 2f * alpha)
+                : interpolationMode == BasketballPoseInterpolationMode.Disabled
+                    ? 1f
+                    : alpha;
+        }
+
+        public void ApplyApplicationSettings()
+        {
+            QualitySettings.vSyncCount = vSyncCount;
+            Application.targetFrameRate = targetFrameRate;
+        }
+
+        public int ApplyShadowBudget()
+        {
+            if (!applyRealtimeShadowBudget)
+            {
+                return 0;
+            }
+
+            Light[] lights = Object.FindObjectsByType<Light>(FindObjectsInactive.Exclude);
+            Light preferredDirectional = RenderSettings.sun;
+            if (preferredDirectional == null || !preferredDirectional.isActiveAndEnabled ||
+                preferredDirectional.type != LightType.Directional ||
+                preferredDirectional.shadows == LightShadows.None)
+            {
+                preferredDirectional = null;
+                float strongestIntensity = float.NegativeInfinity;
+                for (int index = 0; index < lights.Length; index++)
+                {
+                    Light candidate = lights[index];
+                    if (candidate.type != LightType.Directional ||
+                        candidate.shadows == LightShadows.None ||
+                        candidate.intensity <= strongestIntensity)
+                    {
+                        continue;
+                    }
+                    preferredDirectional = candidate;
+                    strongestIntensity = candidate.intensity;
+                }
+            }
+
+            int directionalCount = 0;
+            int additionalCount = 0;
+            int disabledCount = 0;
+            if (preferredDirectional != null && maximumShadowedDirectionalLights > 0)
+            {
+                directionalCount = 1;
+            }
+
+            for (int index = 0; index < lights.Length; index++)
+            {
+                Light light = lights[index];
+                if (light.shadows == LightShadows.None)
+                {
+                    continue;
+                }
+
+                bool keep;
+                if (light.type == LightType.Directional)
+                {
+                    if (light == preferredDirectional && maximumShadowedDirectionalLights > 0)
+                    {
+                        continue;
+                    }
+                    keep = directionalCount < maximumShadowedDirectionalLights;
+                    if (keep)
+                    {
+                        directionalCount++;
+                    }
+                }
+                else
+                {
+                    keep = additionalCount < maximumShadowedAdditionalLights;
+                    if (keep)
+                    {
+                        additionalCount++;
+                    }
+                }
+
+                if (!keep)
+                {
+                    light.shadows = LightShadows.None;
+                    disabledCount++;
+                }
+            }
+            return disabledCount;
+        }
+
+        private void OnValidate()
+        {
+            neuralTickRate = Mathf.Clamp(neuralTickRate, 10, CanonicalNeuralTickRate);
+            maximumCatchUpTicks = Mathf.Clamp(maximumCatchUpTicks, 1, 8);
+            maximumPitch = Mathf.Max(minimumPitch, maximumPitch);
+            recenterPitch = Mathf.Clamp(recenterPitch, minimumPitch, maximumPitch);
+            minimumCameraDistance = Mathf.Max(0.1f, minimumCameraDistance);
+            maximumCameraDistance = Mathf.Max(minimumCameraDistance, maximumCameraDistance);
+            cameraDistance = Mathf.Clamp(
+                cameraDistance,
+                minimumCameraDistance,
+                maximumCameraDistance);
+        }
+    }
+}

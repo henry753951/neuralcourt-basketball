@@ -179,8 +179,6 @@ namespace CrowdEyes.AI4Animation.Tests
 
             ThirdPersonOrbitCamera orbit =
                 Object.FindAnyObjectByType<ThirdPersonOrbitCamera>();
-            BasketballLegacyCamera legacy =
-                Object.FindAnyObjectByType<BasketballLegacyCamera>(FindObjectsInactive.Include);
             BasketballMatchController match =
                 Object.FindAnyObjectByType<BasketballMatchController>();
             match.InitializeMatch();
@@ -190,8 +188,6 @@ namespace CrowdEyes.AI4Animation.Tests
             Assert.That(orbit, Is.Not.Null);
             Assert.That(orbit.enabled, Is.True);
             Assert.That(orbit.Target, Is.Not.Null);
-            Assert.That(legacy, Is.Not.Null);
-            Assert.That(legacy.enabled, Is.False, "Reference camera must remain available but inactive.");
             Assert.That(input.Mode, Is.EqualTo(BasketballKeyboardMouseInputProvider.InputMode.Keyboard));
 
             controller.enabled = false;

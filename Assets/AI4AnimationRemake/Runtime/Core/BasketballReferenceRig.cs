@@ -2,6 +2,13 @@ using UnityEngine;
 
 namespace CrowdEyes.AI4Animation.Basketball
 {
+    public enum BasketballInferenceBackendType
+    {
+        Reference,
+        Burst,
+        SentisGpuBatch
+    }
+
     [DisallowMultipleComponent]
     public sealed class BasketballReferenceRig : MonoBehaviour
     {
@@ -14,29 +21,31 @@ namespace CrowdEyes.AI4Animation.Basketball
         [SerializeField]
         private BasketballBallController ball;
 
-        [SerializeField, Min(1)]
-        private int neuralTickRate = 30;
-
-        [SerializeField]
-        private bool renderInterpolation = true;
-
-        [SerializeField]
-        private bool enableContactIK = true;
-
-        [SerializeField]
-        private bool enableDebugDraw;
-
-        [SerializeField]
-        private bool deterministicMode = true;
+        private BasketballRuntimeSettings runtimeSettings;
 
         public BasketballModelAsset Model => model;
         public BasketballSkeleton Skeleton => skeleton;
         public BasketballBallController Ball => ball;
-        public int NeuralTickRate => neuralTickRate;
-        public bool RenderInterpolation => renderInterpolation;
-        public bool EnableContactIK => enableContactIK;
-        public bool EnableDebugDraw => enableDebugDraw;
-        public bool DeterministicMode => deterministicMode;
+        public BasketballRuntimeSettings RuntimeSettings => runtimeSettings != null
+            ? runtimeSettings
+            : BasketballRuntimeSettings.LoadDefault();
+        public int NeuralTickRate => RuntimeSettings != null
+            ? RuntimeSettings.NeuralTickRate
+            : BasketballRuntimeSettings.CanonicalNeuralTickRate;
+        public bool RenderInterpolation => RuntimeSettings == null ||
+                                           RuntimeSettings.RenderInterpolation;
+        public int MaximumCatchUpTicks => RuntimeSettings != null
+            ? RuntimeSettings.MaximumCatchUpTicks
+            : 4;
+        public bool EnableContactIK => RuntimeSettings == null ||
+                                       RuntimeSettings.EnableContactIK;
+        public bool EnableDebugDraw => RuntimeSettings != null &&
+                                       RuntimeSettings.EnableDebugDraw;
+        public bool DeterministicMode => RuntimeSettings == null ||
+                                         RuntimeSettings.DeterministicMode;
+        public BasketballInferenceBackendType InferenceBackend => RuntimeSettings != null
+            ? RuntimeSettings.InferenceBackend
+            : BasketballInferenceBackendType.Reference;
 
         public bool Validate(out string reason)
         {
@@ -70,9 +79,10 @@ namespace CrowdEyes.AI4Animation.Basketball
                 return false;
             }
 
-            if (neuralTickRate != 30)
+            if (RuntimeSettings == null)
             {
-                reason = $"Reference mode requires 30 Hz but is set to {neuralTickRate} Hz.";
+                reason = $"Basketball runtime settings are missing from Resources/" +
+                         $"{BasketballRuntimeSettings.DefaultResourcePath}.asset.";
                 return false;
             }
 
@@ -89,12 +99,10 @@ namespace CrowdEyes.AI4Animation.Basketball
             model = modelAsset;
             skeleton = skeletonComponent;
             ball = ballComponent;
-            neuralTickRate = 30;
-            renderInterpolation = true;
-            enableContactIK = true;
-            enableDebugDraw = false;
-            deterministicMode = true;
         }
 #endif
+
+        internal void SetRuntimeSettings(BasketballRuntimeSettings value) =>
+            runtimeSettings = value;
     }
 }

@@ -2,7 +2,8 @@
   "name": "CrowdEyes.AI4Animation.Tests.EditMode",
   "rootNamespace": "CrowdEyes.AI4Animation.Tests",
   "references": [
-    "CrowdEyes.AI4Animation.Runtime"
+    "CrowdEyes.AI4Animation.Runtime",
+    "Unity.InferenceEngine"
   ],
   "includePlatforms": [
     "Editor"

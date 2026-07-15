@@ -17,8 +17,8 @@ BasketballKeyboardMouseInputProvider
   -> BasketballFeatureBuilder (864 floats per player)
   -> BasketballSentisBatchScheduler
        -> one official GPUCompute Worker
-       -> [3,864] ONNX input
-       -> asynchronous [3,596] readback
+       -> [10,864] ONNX input
+       -> asynchronous [10,596] readback
        -> 588 model outputs + 8 HUD gating values per player
   -> BasketballOutputDecoder
   -> previous/current BasketballPoseBuffer
@@ -26,18 +26,29 @@ BasketballKeyboardMouseInputProvider
   -> BasketballSkeleton + authoritative BasketballBallController
 
 Rendered player Transform
+  -> presentation-only target smoothing
   -> ThirdPersonOrbitCamera
   -> camera-relative WASD interpretation only
+
+Canonical interpolated pose
+  -> BasketballHumanoidVisualRetargeter
+       -> position-driven limb swing + bounded wrist rotation
+       -> Humanoid visual skeleton only
+  -> BasketballPlayerAppearance
+       -> shared team profiles + MaterialPropertyBlock colors
+       -> centered skinned jersey-number patches
 ```
 
 ## GPU-only inference ownership
 
 - `BasketballModelContract` defines the immutable dimensions: 864 inputs, 588 model outputs,
   eight experts and 596 packed GPU outputs.
-- `BasketballMoEBatch3.onnx` is the only deployed model/weight asset. The old 58-buffer serialized
+- `BasketballMoEBatch10.onnx` is the deployed 5v5 model/weight asset. It preserves the same shared
+  MoE weights and operators while changing only the fixed batch dimension and three blend-weight
+  reshape tensors from 3 to 10. The old 58-buffer serialized
   CPU asset and Reference/Burst evaluators are not part of the runtime.
 - `BasketballSentisBatchScheduler` owns the neural clock and the only `Worker` and input tensor.
-  Exactly one recurrent batch may be in flight. All three output rows are committed together.
+  Exactly one recurrent batch may be in flight. All ten output rows are committed together.
 - Every `BasketballNeuralController` owns its recurrent state, preallocated feature/output data,
   pose history, contacts and phase. Players never share recurrent state.
 - The scheduler uses `BackendType.GPUCompute` only. Initialization, schedule or readback failure
@@ -67,9 +78,13 @@ interpolation never becomes simulation input.
   pass/shot/loose/contested/catch states and touch-before-secure arbitration.
 - Only the owner may apply a predicted controlled ball pose. Released/free flight is Rigidbody
   authoritative and receives no in-flight homing correction.
-- `BasketballTeamMember` stores stable identity/team data and player references.
+- `BasketballTeamMember` stores stable player index, team ID, jersey number and player references.
+- `BasketballHumanoidVisualRetargeter` is presentation-only. It restores the canonical mannequin
+  whenever the optional Humanoid visual cannot be validated, so a broken skin cannot hide the
+  neural reference rig.
 - `ThirdPersonOrbitCamera` and UI Toolkit are presentation systems. Camera heading enters control
-  only while interpreting keyboard movement.
+  only while interpreting keyboard movement. Its pivot is smoothed independently from the neural
+  clock, and collision ignores dynamic player/ball colliders.
 - Future route-planning AI should produce `BasketballIntent`; it must not write recurrent state,
   player transforms or ball Rigidbody state directly.
 

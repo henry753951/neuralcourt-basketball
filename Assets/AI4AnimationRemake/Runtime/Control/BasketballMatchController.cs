@@ -378,8 +378,8 @@ namespace CrowdEyes.AI4Animation.Basketball
                 // when the real ball is close or entering the catch window.
                 intent.CatchReady = true;
                 intent.Hold = ballCatchable &&
-                              (passContested || ballDistance <= 2.4f ||
-                               timeToArrival <= 0.5f);
+                              (passContested || ballDistance <= 3f ||
+                               timeToArrival <= 0.65f);
                 intent.UseWorldMove = planarMove.magnitude > 0.22f;
                 intent.WorldMove = Vector3.ClampMagnitude(planarMove, 1f);
                 intent.UseWorldFacing = true;

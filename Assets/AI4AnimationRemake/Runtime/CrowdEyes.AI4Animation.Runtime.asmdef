@@ -4,6 +4,7 @@
   "references": [
     "Unity.InputSystem",
     "Unity.ugui",
+    "Unity.Collections",
     "Unity.InferenceEngine"
   ],
   "includePlatforms": [],

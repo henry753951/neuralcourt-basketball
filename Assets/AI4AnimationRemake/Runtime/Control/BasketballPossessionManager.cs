@@ -46,7 +46,12 @@ namespace CrowdEyes.AI4Animation.Basketball
         private float stealTouchCandidateQuality;
         private float stealTouchStartedAt = float.NegativeInfinity;
         private float stealTouchExpiresAt = float.NegativeInfinity;
+        private Vector3 previousPhysicsBallPosition;
+        private bool hasPreviousPhysicsBallPosition;
         private bool initialized;
+
+        private BasketballRuntimeSettings RuntimeSettings =>
+            BasketballRuntimeSettings.LoadDefault();
 
         public BasketballTeamMember Owner => owner;
         public BasketballTeamMember PreviousOwner => previousOwner;
@@ -180,7 +185,8 @@ namespace CrowdEyes.AI4Animation.Basketball
                 receiver,
                 ball.transform.position,
                 PossessionVersion,
-                passType);
+                passType,
+                RuntimeSettings);
             passStartedAt = Time.time;
             bestReleaseScore = 0f;
             bestReleaseDirectionError = 180f;
@@ -229,7 +235,8 @@ namespace CrowdEyes.AI4Animation.Basketball
 
             BasketballPassPlanner.RefreshRelease(
                 ref passPlan,
-                member.Controller.State.BallPositions[BasketballAgentState.Pivot]);
+                member.Controller.State.BallPositions[BasketballAgentState.Pivot],
+                RuntimeSettings);
 
             float hold;
             float shoot;
@@ -316,7 +323,10 @@ namespace CrowdEyes.AI4Animation.Basketball
                 return;
             }
 
-            BasketballPassPlanner.RefreshRelease(ref passPlan, observation.Position);
+            BasketballPassPlanner.RefreshRelease(
+                ref passPlan,
+                observation.Position,
+                RuntimeSettings);
             float score = BasketballPassReleaseDetector.Evaluate(passPlan, observation);
             BasketballPassReleaseDetector.MeasureErrors(
                 passPlan,
@@ -346,8 +356,24 @@ namespace CrowdEyes.AI4Animation.Basketball
                                     currentFacing.sqrMagnitude > 1e-8f
                 ? Vector3.Dot(desiredFacing.normalized, currentFacing.normalized)
                 : 1f;
+            BasketballAgentState passerState = passer != null
+                ? passer.Controller.State
+                : null;
+            float chestY = passerState != null
+                ? passerState.BonePositions[14].y
+                : observation.RootPosition.y + 1.2f;
+            BasketballRuntimeSettings settings = RuntimeSettings;
+            float belowChestTolerance = settings != null
+                ? settings.PassReleaseBelowChestTolerance
+                : 0.48f;
+            float forcedReleaseSeconds = settings != null
+                ? settings.ForcedPassReleaseSeconds
+                : 0.84f;
+            bool releaseHeightReady = observation.Position.y >=
+                                      chestY - belowChestTolerance;
             bool releaseReady = elapsed >= 0.52f &&
-                                (facingAlignment >= 0.35f || elapsed >= 0.78f);
+                                ((facingAlignment >= 0.35f && releaseHeightReady) ||
+                                 elapsed >= forcedReleaseSeconds);
             if (!releaseReady)
             {
                 return;
@@ -355,7 +381,10 @@ namespace CrowdEyes.AI4Animation.Basketball
 
             // Pass direction comes from the pass plan, not Ball Target. Apply the
             // computed projectile velocity once at release; physics owns all flight.
-            BasketballPassPlanner.RefreshRelease(ref passPlan, observation.Position);
+            BasketballPassPlanner.RefreshRelease(
+                ref passPlan,
+                observation.Position,
+                RuntimeSettings);
             ReleasePass(observation, passPlan.DesiredReleaseVelocity);
         }
 
@@ -371,6 +400,7 @@ namespace CrowdEyes.AI4Animation.Basketball
             flightStartedAt = Time.time;
             contestStartedAt = float.NegativeInfinity;
             LastPassFailureReason = null;
+            BeginPhysicsTracking(observation.Position);
             ball.ReleaseFromPose(
                 observation.Position,
                 ball.transform.rotation,
@@ -389,6 +419,7 @@ namespace CrowdEyes.AI4Animation.Basketball
             BallControlMode = BasketballBallControlMode.PhysicsFlight;
             flightStartedAt = Time.time;
             contestStartedAt = float.NegativeInfinity;
+            BeginPhysicsTracking(observation.Position);
             ball.ReleaseFromPose(
                 observation.Position,
                 ball.transform.rotation,
@@ -439,11 +470,11 @@ namespace CrowdEyes.AI4Animation.Basketball
             float bestQuality = 0f;
             float secondQuality = 0f;
             Vector3 currentBallPosition = ball.transform.position;
-            float sweepSeconds = Mathf.Min(
-                Mathf.Max(Time.deltaTime, Time.fixedDeltaTime),
-                1f / BasketballAgentState.Framerate);
-            Vector3 previousBallPosition = currentBallPosition -
-                                           ball.Velocity * sweepSeconds;
+            Vector3 previousBallPosition = hasPreviousPhysicsBallPosition
+                ? previousPhysicsBallPosition
+                : currentBallPosition;
+            previousPhysicsBallPosition = currentBallPosition;
+            hasPreviousPhysicsBallPosition = true;
             for (int index = 0; index < players.Length; index++)
             {
                 if (!HasFreshObservation(index))
@@ -736,6 +767,7 @@ namespace CrowdEyes.AI4Animation.Basketball
             lastStealTouchTime = Time.time;
             flightStartedAt = Time.time;
             contestStartedAt = contested ? Time.time : float.NegativeInfinity;
+            BeginPhysicsTracking(controlledBall.Position);
             ball.ReleaseFromPose(
                 controlledBall.Position,
                 ball.transform.rotation,
@@ -753,6 +785,7 @@ namespace CrowdEyes.AI4Animation.Basketball
             intendedReceiver = null;
             passPlan = default;
             contestStartedAt = float.NegativeInfinity;
+            hasPreviousPhysicsBallPosition = false;
         }
 
         private void ResolveCatchBlend()
@@ -829,6 +862,12 @@ namespace CrowdEyes.AI4Animation.Basketball
             stealTouchCandidateQuality = 0f;
             stealTouchStartedAt = float.NegativeInfinity;
             stealTouchExpiresAt = float.NegativeInfinity;
+        }
+
+        private void BeginPhysicsTracking(Vector3 position)
+        {
+            previousPhysicsBallPosition = position;
+            hasPreviousPhysicsBallPosition = true;
         }
 
         private static float MinimumSweptHandDistance(

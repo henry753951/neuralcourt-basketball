@@ -14,7 +14,7 @@ path, IK, UI, and debug visualization are the behavior baseline for subsequent p
   enters Ball Control Mode so normal mouse movement can orbit the camera.
 - A future AI route controller will provide `BasketballIntent` directly; no path planner is part
   of Phase 2.
-- The three-player team/pass/steal layer is reconstructed because the supplied SIGGRAPH 2020
+- The 5v5 team/pass/steal layer is reconstructed because the supplied SIGGRAPH 2020
   project does not include a multiplayer match controller. Team filtering, central possession,
   physical pass flight, contested/loose states and arbitration are new match-level rules.
 - The model has no Pass or Steal style labels. Passing uses Hold/root-facing preparation without
@@ -23,7 +23,7 @@ path, IK, UI, and debug visualization are the behavior baseline for subsequent p
   distance and Touch-before-Secure arbitration; it does not claim a learned poke animation.
 - Unselected players intentionally receive Stand rather than Hold. Only an intended receiver in
   `PassFlight` receives catch guidance; this prevents a remote ball from pulling idle hands/body.
-- The three-player demo now uses the official Unity Inference Engine 2.6.1 GPUCompute batch path
+- The 5v5 demo now uses the official Unity Inference Engine 2.6.1 GPUCompute batch path
   exclusively. It retains one 30 Hz closed-loop state per player. The Reference/Burst CPU
   evaluators and fallback have been removed; GPU failure now stops simulation visibly.
 - Neural scheduling can now be selected from one shared profile. The 30 Hz mode remains the

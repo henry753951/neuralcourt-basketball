@@ -1,4 +1,5 @@
 using System;
+using Unity.Collections;
 using Unity.InferenceEngine;
 using Unity.Profiling;
 using UnityEngine;
@@ -8,7 +9,7 @@ using SentisModelAsset = Unity.InferenceEngine.ModelAsset;
 namespace CrowdEyes.AI4Animation.Basketball
 {
     /// <summary>
-    /// Runs the three recurrent Basketball agents as one fixed-size Sentis batch.
+    /// Runs the ten recurrent Basketball agents as one fixed-size Sentis batch.
     /// Only inference is asynchronous: each controller's closed-loop state is
     /// committed after the GPU readback completes and before another tick starts.
     /// </summary>
@@ -16,13 +17,14 @@ namespace CrowdEyes.AI4Animation.Basketball
     [DisallowMultipleComponent]
     public sealed class BasketballSentisBatchScheduler : MonoBehaviour
     {
-        public const int BatchSize = 3;
+        public const int BatchSize = 10;
         public const int CombinedOutputCount =
             BasketballModelContract.PackedOutputFeatureCount;
 
-        private const string DefaultResourcePath = "Models/BasketballMoEBatch3";
+        private const string DefaultResourcePath = "Models/BasketballMoEBatch10";
         private const string InputName = "input";
         private const string OutputName = "batch_output";
+        private const int MaximumReadbackRetries = 2;
 
         private static readonly ProfilerMarker InferenceMarker =
             new("Basketball.Inference");
@@ -38,14 +40,20 @@ namespace CrowdEyes.AI4Animation.Basketball
             new BasketballNeuralController[BatchSize];
         private readonly float[] batchInput =
             new float[BatchSize * BasketballModelContract.InputFeatureCount];
+        private readonly float[] batchOutput =
+            new float[BatchSize * CombinedOutputCount];
 
         private Worker worker;
         private Tensor<float> inputTensor;
         private Tensor<float> pendingOutput;
+        private NativeArray<float> readbackBuffer;
+        private AsyncGPUReadbackRequest readbackRequest;
         private SchedulerState schedulerState;
         private float accumulator;
         private double inferenceStartTime;
         private bool controllersAttached;
+        private bool readbackInFlight;
+        private int readbackRetryCount;
         private float tickInterval = 1f / BasketballAgentState.Framerate;
         private int maximumBufferedTicks = 4;
 
@@ -56,8 +64,8 @@ namespace CrowdEyes.AI4Animation.Basketball
             SchedulerState.Disposed => "SENTIS GPU STOPPED",
             SchedulerState.Running when
                 SystemInfo.graphicsDeviceType == GraphicsDeviceType.Direct3D12 =>
-                "SENTIS DML BATCH 3",
-            SchedulerState.Running => "SENTIS GPU BATCH 3",
+                "SENTIS DML BATCH 10",
+            SchedulerState.Running => "SENTIS GPU BATCH 10",
             _ => "SENTIS GPU INITIALIZING"
         };
         public float LastRoundTripMilliseconds { get; private set; } = -1f;
@@ -105,7 +113,7 @@ namespace CrowdEyes.AI4Animation.Basketball
 
             if (pendingOutput != null)
             {
-                if (!pendingOutput.IsReadbackRequestDone())
+                if (!PollOutputReadback("readback"))
                 {
                     UpdateInterpolationAlpha();
                     return;
@@ -177,6 +185,10 @@ namespace CrowdEyes.AI4Animation.Basketball
                 inputTensor = new Tensor<float>(
                     new TensorShape(BatchSize, BasketballModelContract.InputFeatureCount),
                     batchInput);
+                readbackBuffer = new NativeArray<float>(
+                    BatchSize * CombinedOutputCount,
+                    Allocator.Persistent,
+                    NativeArrayOptions.UninitializedMemory);
                 worker = new Worker(model, BackendType.GPUCompute);
                 BeginWarmup();
             }
@@ -258,21 +270,21 @@ namespace CrowdEyes.AI4Animation.Basketball
                 worker.Schedule(inputTensor);
                 pendingOutput = worker.PeekOutput(OutputName) as Tensor<float>;
                 ValidateOutputTensor(pendingOutput);
-                pendingOutput.ReadbackRequest();
+                readbackRetryCount = 0;
+                RequestOutputReadback();
             }
             schedulerState = SchedulerState.WarmingUp;
         }
 
         private void PollWarmup()
         {
-            if (pendingOutput == null || !pendingOutput.IsReadbackRequestDone())
+            if (pendingOutput == null || !PollOutputReadback("warmup"))
             {
                 return;
             }
             try
             {
-                using Tensor<float> warmupOutput = pendingOutput.ReadbackAndClone();
-                ValidateOutputTensor(warmupOutput);
+                CopyAndValidateReadback();
                 pendingOutput = null;
                 accumulator = 0f;
                 LastRoundTripMilliseconds = -1f;
@@ -307,7 +319,8 @@ namespace CrowdEyes.AI4Animation.Basketball
                     worker.Schedule(inputTensor);
                     pendingOutput = worker.PeekOutput(OutputName) as Tensor<float>;
                     ValidateOutputTensor(pendingOutput);
-                    pendingOutput.ReadbackRequest();
+                    readbackRetryCount = 0;
+                    RequestOutputReadback();
                 }
                 inferenceStartTime = Time.realtimeSinceStartupAsDouble;
             }
@@ -322,11 +335,9 @@ namespace CrowdEyes.AI4Animation.Basketball
             try
             {
                 using (ReadbackMarker.Auto())
-                using (Tensor<float> cpuOutput = pendingOutput.ReadbackAndClone())
                 {
-                    ValidateOutputTensor(cpuOutput);
-                    ReadOnlySpan<float> values = cpuOutput.AsReadOnlySpan();
-                    ValidateFinite(values);
+                    CopyAndValidateReadback();
+                    ReadOnlySpan<float> values = batchOutput;
                     for (int index = 0; index < BatchSize; index++)
                     {
                         int rowStart = index * CombinedOutputCount;
@@ -374,6 +385,67 @@ namespace CrowdEyes.AI4Animation.Basketball
                         $"Sentis batch output is non-finite at index {index}.");
                 }
             }
+        }
+
+        private void RequestOutputReadback()
+        {
+            if (!readbackBuffer.IsCreated)
+            {
+                throw new InvalidOperationException(
+                    "Basketball GPU readback buffer is not allocated.");
+            }
+            if (pendingOutput?.dataOnBackend is not ComputeTensorData computeData)
+            {
+                throw new InvalidOperationException(
+                    "Basketball GPU output is not backed by ComputeTensorData.");
+            }
+
+            readbackRequest = AsyncGPUReadback.RequestIntoNativeArray(
+                ref readbackBuffer,
+                computeData.buffer,
+                readbackBuffer.Length * sizeof(float),
+                0);
+            readbackInFlight = true;
+        }
+
+        private bool PollOutputReadback(string stage)
+        {
+            if (!readbackInFlight || !readbackRequest.done)
+            {
+                return false;
+            }
+            if (!readbackRequest.hasError)
+            {
+                readbackInFlight = false;
+                return true;
+            }
+
+            readbackInFlight = false;
+            if (readbackRetryCount < MaximumReadbackRetries)
+            {
+                readbackRetryCount++;
+                if (readbackRetryCount == 1)
+                {
+                    Debug.LogWarning(
+                        $"Basketball GPU readback reported a transient error during {stage}; " +
+                        $"retrying without advancing recurrent state.",
+                        this);
+                }
+                RequestOutputReadback();
+                return false;
+            }
+
+            FailGpu(
+                stage,
+                new InvalidOperationException(
+                    $"GPU readback failed after {MaximumReadbackRetries + 1} attempts."));
+            return false;
+        }
+
+        private void CopyAndValidateReadback()
+        {
+            readbackBuffer.CopyTo(batchOutput);
+            ValidateFinite(batchOutput);
         }
 
         private void AttachControllers()
@@ -426,11 +498,20 @@ namespace CrowdEyes.AI4Animation.Basketball
 
         private void DisposeSentis()
         {
+            if (readbackInFlight && !readbackRequest.done)
+            {
+                readbackRequest.WaitForCompletion();
+            }
+            readbackInFlight = false;
             worker?.Dispose();
             worker = null;
             inputTensor?.Dispose();
             inputTensor = null;
             pendingOutput = null;
+            if (readbackBuffer.IsCreated)
+            {
+                readbackBuffer.Dispose();
+            }
         }
 
 #if UNITY_EDITOR

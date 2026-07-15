@@ -35,10 +35,13 @@ namespace CrowdEyes.AI4Animation.Basketball
         private float pitchVelocity;
         private float distanceVelocity;
         private Vector3 positionVelocity;
+        private Vector3 targetPositionVelocity;
+        private Vector3 smoothedTargetPosition;
         private bool initialized;
         private bool cursorLocked;
         private int collisionQueryCountdown;
         private float cachedCollisionDistance;
+        private readonly RaycastHit[] collisionHits = new RaycastHit[32];
 
         public BasketballRuntimeSettings RuntimeSettings => runtimeSettings != null
             ? runtimeSettings
@@ -148,7 +151,16 @@ namespace CrowdEyes.AI4Animation.Basketball
                     currentPitch, desiredPitch, ref pitchVelocity, settings.RotationSmoothTime,
                     Mathf.Infinity, deltaTime);
 
-                Vector3 pivot = target.position + pivotOffset;
+                smoothedTargetPosition = settings.CameraTargetSmoothTime <= 0f
+                    ? target.position
+                    : Vector3.SmoothDamp(
+                        smoothedTargetPosition,
+                        target.position,
+                        ref targetPositionVelocity,
+                        settings.CameraTargetSmoothTime,
+                        Mathf.Infinity,
+                        deltaTime);
+                Vector3 pivot = smoothedTargetPosition + pivotOffset;
                 Quaternion orbitRotation = Quaternion.Euler(currentPitch, currentYaw, 0f);
                 Vector3 cameraDirection = -(orbitRotation * Vector3.forward);
                 float collisionDistance = ResolveCollisionDistance(
@@ -206,7 +218,6 @@ namespace CrowdEyes.AI4Animation.Basketball
                 return;
             }
             target = followTarget;
-            positionVelocity = Vector3.zero;
             collisionQueryCountdown = 0;
             if (!initialized && target != null)
             {
@@ -272,6 +283,8 @@ namespace CrowdEyes.AI4Animation.Basketball
             cachedCollisionDistance = desiredDistance;
             collisionQueryCountdown = 0;
             positionVelocity = Vector3.zero;
+            targetPositionVelocity = Vector3.zero;
+            smoothedTargetPosition = target.position;
             initialized = true;
         }
 
@@ -294,23 +307,41 @@ namespace CrowdEyes.AI4Animation.Basketball
             float resolved = requestedDistance;
             using (CameraCollisionMarker.Auto())
             {
-                if (Physics.SphereCast(
-                        pivot,
-                        settings.CameraCollisionRadius,
-                        cameraDirection,
-                        out RaycastHit hit,
-                        requestedDistance,
-                        settings.CameraCollisionMask,
-                        QueryTriggerInteraction.Ignore))
+                int hitCount = Physics.SphereCastNonAlloc(
+                    pivot,
+                    settings.CameraCollisionRadius,
+                    cameraDirection,
+                    collisionHits,
+                    requestedDistance,
+                    settings.CameraCollisionMask,
+                    QueryTriggerInteraction.Ignore);
+                float nearestDistance = float.PositiveInfinity;
+                for (int index = 0; index < hitCount; index++)
+                {
+                    RaycastHit hit = collisionHits[index];
+                    Collider collider = hit.collider;
+                    if (collider == null || IsDynamicBasketballObject(collider))
+                    {
+                        continue;
+                    }
+                    nearestDistance = Mathf.Min(nearestDistance, hit.distance);
+                }
+                if (!float.IsPositiveInfinity(nearestDistance))
                 {
                     resolved = Mathf.Max(
                         settings.MinimumCollisionDistance,
-                        hit.distance - settings.CameraCollisionPadding);
+                        nearestDistance - settings.CameraCollisionPadding);
                 }
             }
             cachedCollisionDistance = resolved;
             collisionQueryCountdown = settings.CollisionQueryIntervalFrames - 1;
             return resolved;
+        }
+
+        private static bool IsDynamicBasketballObject(Collider collider)
+        {
+            return collider.GetComponentInParent<BasketballTeamMember>() != null ||
+                   collider.GetComponentInParent<BasketballBallController>() != null;
         }
 
         internal void SetRuntimeSettings(BasketballRuntimeSettings value)

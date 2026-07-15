@@ -327,15 +327,15 @@ archive are Git LFS pointer files. They are not runtime inputs.
 
 ## GPU batch packaging
 
-`Assets/AI4AnimationRemake/Resources/Models/BasketballMoEBatch3.onnx` is the sole deployed model
-asset for Unity Inference Engine 2.6.1. It was generated offline from all 58 complete source
-buffers without retraining, quantization, channel reordering or model approximation. The raw
-serialized model and one-time conversion tool have been removed from the production project;
-Python is not a runtime dependency.
+`Assets/AI4AnimationRemake/Resources/Models/BasketballMoEBatch10.onnx` is the deployed 5v5 model
+asset for Unity Inference Engine 2.6.1. Its weights originated from all 58 complete source
+buffers and its fixed batch was expanded offline from 3 to 10 without retraining, quantization,
+channel reordering or model approximation. The reproducible converter is under `Tools/`;
+Python is not a Unity runtime dependency.
 
-The imported graph has a fixed input shape `[3,864]`. Each row independently executes the same
+The imported graph has a fixed input shape `[10,864]`. Each row independently executes the same
 normalization, 130-feature gating network, Softmax, dynamic eight-expert blending, ELU layers and
-denormalization described above. Its single `[3,596]` transport output packs:
+denormalization described above. Its single `[10,596]` transport output packs:
 
 ```text
 row[0..587]   = original Basketball model output
@@ -366,7 +366,7 @@ The resulting state becomes the next tick's input. Tests must therefore include 
 
 ## Required deployment validation
 
-- Reject any model whose input/output names or `[3,864] -> [3,596]` shapes differ.
+- Reject any model whose input/output names or `[10,864] -> [10,596]` shapes differ.
 - Reject any non-finite readback before it can enter recurrent state.
 - Run recurrent 30 Hz movement, dribble, shoot, pass/catch and steal scenarios after a model
   replacement; isolated finite output is not enough for a closed-loop model.

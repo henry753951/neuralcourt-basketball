@@ -10,7 +10,7 @@ namespace CrowdEyes.AI4Animation.Tests
     public sealed class BasketballSentisBatchTests
     {
         private const string SentisModelPath =
-            "Assets/AI4AnimationRemake/Resources/Models/BasketballMoEBatch3.onnx";
+            "Assets/AI4AnimationRemake/Resources/Models/BasketballMoEBatch10.onnx";
 
         private ModelAsset sentisModel;
 
@@ -34,7 +34,7 @@ namespace CrowdEyes.AI4Animation.Tests
 
         [Test]
         [Category("GPU")]
-        public void SentisGpuComputeBatch3_ProducesFinitePackedOutput()
+        public void SentisGpuComputeBatch10_ProducesFinitePackedOutput()
         {
             if (!SystemInfo.supportsComputeShaders)
             {

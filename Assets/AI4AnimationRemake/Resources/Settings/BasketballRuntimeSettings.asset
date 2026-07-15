@@ -31,6 +31,14 @@ MonoBehaviour:
   zoomSensitivity: 0.015
   positionSmoothTime: 0.06
   distanceSmoothTime: 0.08
+  directPassApexClearance: 0.28
+  lobPassApexClearance: 0.9
+  maximumDirectPassSpeed: 8
+  maximumLobPassSpeed: 7
+  maximumReceiverLeadDistance: 1.35
+  receiverLeadScale: 0.9
+  passReleaseBelowChestTolerance: 0.48
+  forcedPassReleaseSeconds: 0.84
   cameraCollisionEnabled: 1
   cameraCollisionMask:
     serializedVersion: 2
@@ -38,8 +46,8 @@ MonoBehaviour:
   cameraCollisionRadius: 0.2
   cameraCollisionPadding: 0.08
   minimumCollisionDistance: 0.35
-  collisionQueryIntervalFrames: 1
-  useOcclusionCulling: 1
+  collisionQueryIntervalFrames: 2
+  useOcclusionCulling: 0
   allowDynamicResolution: 0
   lockCursorOnPlay: 1
   applyRealtimeShadowBudget: 1
@@ -48,4 +56,4 @@ MonoBehaviour:
   telemetryRefreshRate: 15
   performanceRefreshRate: 4
   controlDiskRefreshRate: 30
-  frameTimingCaptureInterval: 4
+  frameTimingCaptureInterval: 15

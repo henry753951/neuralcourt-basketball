@@ -48,8 +48,27 @@ namespace CrowdEyes.AI4Animation.Basketball
         [SerializeField, Min(0.1f)] private float minimumCameraDistance = 1.5f;
         [SerializeField, Min(0.1f)] private float maximumCameraDistance = 9f;
         [SerializeField, Min(0.01f)] private float zoomSensitivity = 0.015f;
+        [Tooltip("Presentation-only smoothing for the rendered player root before it becomes the camera pivot.")]
+        [SerializeField, Min(0f)] private float cameraTargetSmoothTime = 0.035f;
         [SerializeField, Min(0f)] private float positionSmoothTime = 0.06f;
         [SerializeField, Min(0f)] private float distanceSmoothTime = 0.08f;
+
+        [Header("Passing")]
+        [Tooltip("Minimum height above both release and catch points for a normal chest/lead pass.")]
+        [SerializeField, Min(0.05f)] private float directPassApexClearance = 0.28f;
+        [Tooltip("Minimum height above both endpoints for an intentional lob pass.")]
+        [SerializeField, Min(0.1f)] private float lobPassApexClearance = 0.9f;
+        [Tooltip("Maximum horizontal speed for chest and lead passes. Longer passes gain only the arc required to stay below this speed.")]
+        [SerializeField, Min(1f)] private float maximumDirectPassSpeed = 8f;
+        [Tooltip("Maximum horizontal speed for an intentional lob pass.")]
+        [SerializeField, Min(1f)] private float maximumLobPassSpeed = 7f;
+        [Tooltip("Limits receiver prediction so a noisy recurrent velocity cannot move the catch point far away.")]
+        [SerializeField, Min(0f)] private float maximumReceiverLeadDistance = 1.35f;
+        [SerializeField, Range(0f, 1.5f)] private float receiverLeadScale = 0.9f;
+        [Tooltip("Normal passes wait for the model ball to rise near the passer's chest before physics takes ownership.")]
+        [SerializeField, Min(0f)] private float passReleaseBelowChestTolerance = 0.48f;
+        [Tooltip("Fallback release deadline when the pretrained model does not produce a clean chest-height release pose.")]
+        [SerializeField, Min(0.52f)] private float forcedPassReleaseSeconds = 0.84f;
 
         [Header("Camera Collision and Culling")]
         [SerializeField] private bool cameraCollisionEnabled = true;
@@ -57,8 +76,9 @@ namespace CrowdEyes.AI4Animation.Basketball
         [SerializeField, Min(0.01f)] private float cameraCollisionRadius = 0.2f;
         [SerializeField, Min(0f)] private float cameraCollisionPadding = 0.08f;
         [SerializeField, Min(0.05f)] private float minimumCollisionDistance = 0.35f;
-        [SerializeField, Range(1, 8)] private int collisionQueryIntervalFrames = 1;
-        [SerializeField] private bool useOcclusionCulling = true;
+        [SerializeField, Range(1, 8)] private int collisionQueryIntervalFrames = 2;
+        [Tooltip("Enable only after baking occlusion data for the active scene.")]
+        [SerializeField] private bool useOcclusionCulling;
         [SerializeField] private bool allowDynamicResolution;
         [SerializeField] private bool lockCursorOnPlay = true;
 
@@ -72,7 +92,7 @@ namespace CrowdEyes.AI4Animation.Basketball
         [SerializeField, Range(1, 60)] private int telemetryRefreshRate = 15;
         [SerializeField, Range(1, 30)] private int performanceRefreshRate = 4;
         [SerializeField, Range(1, 60)] private int controlDiskRefreshRate = 30;
-        [SerializeField, Range(1, 30)] private int frameTimingCaptureInterval = 4;
+        [SerializeField, Range(1, 30)] private int frameTimingCaptureInterval = 15;
 
         private static BasketballRuntimeSettings cachedDefault;
 
@@ -95,8 +115,17 @@ namespace CrowdEyes.AI4Animation.Basketball
         public float MinimumCameraDistance => minimumCameraDistance;
         public float MaximumCameraDistance => maximumCameraDistance;
         public float ZoomSensitivity => zoomSensitivity;
+        public float CameraTargetSmoothTime => cameraTargetSmoothTime;
         public float PositionSmoothTime => positionSmoothTime;
         public float DistanceSmoothTime => distanceSmoothTime;
+        public float DirectPassApexClearance => directPassApexClearance;
+        public float LobPassApexClearance => lobPassApexClearance;
+        public float MaximumDirectPassSpeed => maximumDirectPassSpeed;
+        public float MaximumLobPassSpeed => maximumLobPassSpeed;
+        public float MaximumReceiverLeadDistance => maximumReceiverLeadDistance;
+        public float ReceiverLeadScale => receiverLeadScale;
+        public float PassReleaseBelowChestTolerance => passReleaseBelowChestTolerance;
+        public float ForcedPassReleaseSeconds => forcedPassReleaseSeconds;
         public bool CameraCollisionEnabled => cameraCollisionEnabled;
         public LayerMask CameraCollisionMask => cameraCollisionMask;
         public float CameraCollisionRadius => cameraCollisionRadius;
@@ -227,6 +256,14 @@ namespace CrowdEyes.AI4Animation.Basketball
                 cameraDistance,
                 minimumCameraDistance,
                 maximumCameraDistance);
+            directPassApexClearance = Mathf.Max(0.05f, directPassApexClearance);
+            lobPassApexClearance = Mathf.Max(
+                directPassApexClearance,
+                lobPassApexClearance);
+            maximumDirectPassSpeed = Mathf.Max(1f, maximumDirectPassSpeed);
+            maximumLobPassSpeed = Mathf.Max(1f, maximumLobPassSpeed);
+            maximumReceiverLeadDistance = Mathf.Max(0f, maximumReceiverLeadDistance);
+            forcedPassReleaseSeconds = Mathf.Max(0.52f, forcedPassReleaseSeconds);
         }
     }
 }

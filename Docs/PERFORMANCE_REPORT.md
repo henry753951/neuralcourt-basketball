@@ -7,9 +7,9 @@ Last updated: 2026-07-15
 | Item | Configuration |
 |---|---|
 | Unity Editor | `6000.5.3f1`, Windows, URP 17.5.0 |
-| Agents | Fixed three-player batch |
+| Agents | Fixed ten-player (5v5) batch |
 | Inference | Unity Inference Engine 2.6.1 `BackendType.GPUCompute` only |
-| GPU graph | `[3,864] -> [3,596]` |
+| GPU graph | `[10,864] -> [10,596]` |
 | Neural rate | 30 Hz reference; 20/15/10 Hz experimental |
 | CPU inference fallback | None |
 | Owner Play Mode validation after GPU-only cleanup | Pending |
@@ -50,6 +50,22 @@ can limit achieved neural rate if a readback frequently exceeds the configured t
 `GPU INFER RTT` must therefore be evaluated together with `NEURAL RATE`, frame time and readback
 markers.
 
+The runtime readback now writes directly into one persistent `NativeArray<float>` and copies into
+the preallocated decode array. It checks `AsyncGPUReadbackRequest.hasError` explicitly and retries
+without advancing recurrent state before reporting a hard GPU failure. This replaces the former
+per-tick CPU Tensor clone.
+
+## Camera/render stability tuning
+
+Pending owner validation after the 2026-07-15 camera-orbit report:
+
+- Disabled camera occlusion culling because `BasketballDemo` has no baked occlusion data.
+- Camera collision SphereCast runs every two render frames instead of every frame.
+- GPU frame-timing capture runs every 15 frames instead of every four frames.
+- PC URP shadow distance is 30 m with two cascades instead of 50 m with four cascades.
+- Additional lights are limited to two per object.
+- SSAO remains enabled but uses its downsampled path.
+
 ## Profiling interpretation
 
 - `Basketball.Inference` is CPU-side dispatch/readback bookkeeping.
@@ -66,10 +82,10 @@ No Play Mode or Test Runner execution was performed during the GPU-only cleanup,
 Please validate in this order:
 
 1. Open `Assets/Scenes/BasketballDemo.unity` and confirm the Console has no compile error.
-2. Enter Play Mode and wait for the HUD to show `SENTIS DML BATCH 3` on DX12, or
-   `SENTIS GPU BATCH 3` on another supported GPU API. `SENTIS GPU ERROR` is a hard failure;
+2. Enter Play Mode and wait for the HUD to show `SENTIS DML BATCH 10` on DX12, or
+   `SENTIS GPU BATCH 10` on another supported GPU API. `SENTIS GPU ERROR` is a hard failure;
    it must never fall back to CPU.
-3. Let the three-player scene run for at least five minutes. In Memory Profiler/Profiler, check
+3. Let the ten-player scene run for at least five minutes. In Memory Profiler/Profiler, check
    Total Used Memory, Graphics/Driver memory, GC Alloc/frame and native allocation trend after
    warm-up. Stable plateaus are expected; monotonic growth is not.
 4. Record FPS, frame/main-thread/GPU time, GPU inference RTT and achieved neural rate at 30 Hz.
@@ -86,7 +102,7 @@ Please validate in this order:
 
 - No compile errors or `SENTIS GPU ERROR`.
 - No monotonic managed/native/GPU memory growth after warm-up.
-- Stable 30 Hz neural rate under the target three-player workload.
+- Stable 30 Hz neural rate under the target ten-player workload.
 - No recurring per-frame allocations attributable to basketball runtime code.
 - Camera rotation does not introduce periodic main-thread spikes.
 - GPU-only output retains accepted movement, ball, pass/catch and possession behavior.

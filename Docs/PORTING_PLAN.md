@@ -102,7 +102,7 @@ This is an autoregressive loop. Any reordering, dropped channel, changed timeste
 
 1. Import only the interactive scene's required assets and preserve source attribution.
 2. Historically import the original 58 buffers to verify conversion; do not ship this temporary asset.
-3. Convert the accepted model to the fixed three-player ONNX and deploy through GPUCompute only.
+3. Convert the accepted model to a fixed multi-player ONNX and deploy through GPUCompute only.
 4. Keep GPU model-name, shape, finite-output and closed-loop behavior checks.
 5. Port the exact feature feed and output read order before splitting behavior into higher-level modules.
 6. Port the canonical skeleton, player primitives, ball, court, and legacy-compatible IK.
@@ -193,7 +193,7 @@ Every major phase runs compile, Console review, Play Mode, and scripted/manual s
 - Phase 0 inspection and reference extraction: complete.
 - Dependency separation and model I/O contract: complete and documented.
 - Historical model import/conversion was completed; temporary CPU migration assets and tests
-  are no longer shipped. The fixed three-player ONNX is the production model representation.
+  are no longer shipped. The fixed ten-player (5v5) ONNX is the production model representation.
 - Selective reference scene extraction: complete for the canonical player primitives,
   court/world primitives, ball, and simple URP materials. The legacy UI and post-processing
   stack were intentionally not imported.

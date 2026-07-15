@@ -1,0 +1,75 @@
+{
+  "armature": "BSD_Athlete_Male_01",
+  "blender_version": "5.1.2",
+  "bone_count": 64,
+  "hair_variant": null,
+  "meshes": [
+    {
+      "materials": [
+        "BSD_Athlete_Male_01_Body.body.001"
+      ],
+      "name": "BSD_Athlete_Male_01_Body_UnityExport",
+      "vertex_count": 11364
+    },
+    {
+      "materials": [
+        "BSD_Athlete_Male_01_Body.eyebrow004.001"
+      ],
+      "name": "BSD_Athlete_Male_01_Eyebrows_UnityExport",
+      "vertex_count": 124
+    },
+    {
+      "materials": [
+        "BSD_Athlete_Male_01_Body.eyelashes01.001"
+      ],
+      "name": "BSD_Athlete_Male_01_Eyelashes_UnityExport",
+      "vertex_count": 250
+    },
+    {
+      "materials": [
+        "BSD_Athlete_Male_01_Body.low-poly.001"
+      ],
+      "name": "BSD_Athlete_Male_01_Eyes_UnityExport",
+      "vertex_count": 96
+    },
+    {
+      "materials": [
+        "BSD_Athlete_Male_01_Body.short01.001"
+      ],
+      "name": "BSD_Athlete_Male_01_Hair_UnityExport",
+      "vertex_count": 2984
+    },
+    {
+      "materials": [
+        "BSD_Team_Jersey_Blue"
+      ],
+      "name": "BSD_Athlete_Male_01_Jersey_UnityExport",
+      "vertex_count": 58081
+    },
+    {
+      "materials": [
+        "BSD_Athlete_Male_01_Body.punkduck_running_shoes_01.001"
+      ],
+      "name": "BSD_Athlete_Male_01_Shoes_UnityExport",
+      "vertex_count": 1630
+    },
+    {
+      "materials": [
+        "BSD_Team_Shorts_Blue"
+      ],
+      "name": "BSD_Athlete_Male_01_Shorts_UnityExport",
+      "vertex_count": 517
+    },
+    {
+      "materials": [
+        "BSD_Athlete_Male_01_Body.teeth_base.001"
+      ],
+      "name": "BSD_Athlete_Male_01_Teeth_UnityExport",
+      "vertex_count": 3868
+    }
+  ],
+  "output": "Assets/ThirdParty/MPFBBasketballPlayers/Models/BSD_Athlete_Male_01.fbx",
+  "output_sha256": "799ce5c0fe09c8ea9088337c93a269917cc6e3b97be787a2260546fe916ad1fe",
+  "schema_version": 1,
+  "source": "Assets/ThirdParty/MPFBBasketballPlayers/Source/BSD_Athlete_Male_01.blend"
+}

@@ -2,7 +2,7 @@
 
 Last reviewed: 2026-07-14
 
-This document records the current three-player reference architecture and the safe integration
+This document records the current ten-player 5v5 reference architecture and the safe integration
 boundary for future player, team, navigation, and network AI. The scene now contains a minimal
 match coordinator, simple teams, one shared ball, human player switching, teammate-only passing,
 and contact-validated opponent steals. It still does not contain navigation or tactical AI.

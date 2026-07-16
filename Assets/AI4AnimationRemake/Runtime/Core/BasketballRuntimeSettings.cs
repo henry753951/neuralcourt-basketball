@@ -55,11 +55,11 @@ namespace CrowdEyes.AI4Animation.Basketball
 
         [Header("Passing")]
         [Tooltip("Minimum height above both release and catch points for a normal chest/lead pass.")]
-        [SerializeField, Min(0.05f)] private float directPassApexClearance = 0.28f;
+        [SerializeField, Min(0.05f)] private float directPassApexClearance = 0.18f;
         [Tooltip("Minimum height above both endpoints for an intentional lob pass.")]
         [SerializeField, Min(0.1f)] private float lobPassApexClearance = 0.9f;
         [Tooltip("Maximum horizontal speed for chest and lead passes. Longer passes gain only the arc required to stay below this speed.")]
-        [SerializeField, Min(1f)] private float maximumDirectPassSpeed = 8f;
+        [SerializeField, Min(1f)] private float maximumDirectPassSpeed = 11.5f;
         [Tooltip("Maximum horizontal speed for an intentional lob pass.")]
         [SerializeField, Min(1f)] private float maximumLobPassSpeed = 7f;
         [Tooltip("Limits receiver prediction so a noisy recurrent velocity cannot move the catch point far away.")]
@@ -67,8 +67,34 @@ namespace CrowdEyes.AI4Animation.Basketball
         [SerializeField, Range(0f, 1.5f)] private float receiverLeadScale = 0.9f;
         [Tooltip("Normal passes wait for the model ball to rise near the passer's chest before physics takes ownership.")]
         [SerializeField, Min(0f)] private float passReleaseBelowChestTolerance = 0.48f;
+        [SerializeField, Min(0f)] private float passGatherSeconds = 0.08f;
+        [SerializeField, Min(0f)] private float passAlignSeconds = 0.16f;
+        [SerializeField, Min(0.05f)] private float passPushSeconds = 0.34f;
+        [SerializeField, Min(0.05f)] private float minimumPassReleaseSeconds = 0.3f;
         [Tooltip("Fallback release deadline when the pretrained model does not produce a clean chest-height release pose.")]
-        [SerializeField, Min(0.52f)] private float forcedPassReleaseSeconds = 0.84f;
+        [SerializeField, Min(0.35f)] private float forcedPassReleaseSeconds = 0.58f;
+
+        [Header("Shooting")]
+        [Tooltip("Minimum apex height above the release point or rim for a normal shot.")]
+        [SerializeField, Min(0.2f)] private float shotApexClearance = 1.05f;
+        [Tooltip("Additional apex height per metre of horizontal shot distance.")]
+        [SerializeField, Min(0f)] private float shotDistanceApexScale = 0.035f;
+        [Tooltip("Upper bound for the distance-adjusted apex clearance.")]
+        [SerializeField, Min(0.5f)] private float maximumShotApexClearance = 2.1f;
+        [Tooltip("Safety ceiling for the one-time physical release velocity.")]
+        [SerializeField, Min(1f)] private float maximumShotLaunchSpeed = 18f;
+        [Tooltip("Required planar facing alignment before the Shoot style is committed.")]
+        [SerializeField, Range(0f, 1f)] private float shotFacingDot = 0.9f;
+        [Tooltip("Maximum time spent turning toward the hoop before committing the Shoot style.")]
+        [SerializeField, Min(0f)] private float maximumShotAlignSeconds = 0.45f;
+        [Tooltip("Cancels a latched shot if the model has not released the ball by this deadline.")]
+        [SerializeField, Min(0.5f)] private float shotCommandTimeoutSeconds = 1.8f;
+        [Tooltip("Minimum time given to the neural pose before a natural shot release is accepted.")]
+        [SerializeField, Min(0.05f)] private float minimumShotReleaseSeconds = 0.2f;
+        [Tooltip("A latched Shoot command always releases by this deadline, even when the pretrained contact signal is imperfect.")]
+        [SerializeField, Min(0.15f)] private float forcedShotReleaseSeconds = 0.58f;
+        [SerializeField, Min(0.2f)] private float minimumShotReleaseHeight = 1.25f;
+        [SerializeField, Range(0f, 1f)] private float naturalShotReleaseHandContact = 0.18f;
 
         [Header("Camera Collision and Culling")]
         [SerializeField] private bool cameraCollisionEnabled = true;
@@ -125,7 +151,22 @@ namespace CrowdEyes.AI4Animation.Basketball
         public float MaximumReceiverLeadDistance => maximumReceiverLeadDistance;
         public float ReceiverLeadScale => receiverLeadScale;
         public float PassReleaseBelowChestTolerance => passReleaseBelowChestTolerance;
+        public float PassGatherSeconds => passGatherSeconds;
+        public float PassAlignSeconds => passAlignSeconds;
+        public float PassPushSeconds => passPushSeconds;
+        public float MinimumPassReleaseSeconds => minimumPassReleaseSeconds;
         public float ForcedPassReleaseSeconds => forcedPassReleaseSeconds;
+        public float ShotApexClearance => shotApexClearance;
+        public float ShotDistanceApexScale => shotDistanceApexScale;
+        public float MaximumShotApexClearance => maximumShotApexClearance;
+        public float MaximumShotLaunchSpeed => maximumShotLaunchSpeed;
+        public float ShotFacingDot => shotFacingDot;
+        public float MaximumShotAlignSeconds => maximumShotAlignSeconds;
+        public float ShotCommandTimeoutSeconds => shotCommandTimeoutSeconds;
+        public float MinimumShotReleaseSeconds => minimumShotReleaseSeconds;
+        public float ForcedShotReleaseSeconds => forcedShotReleaseSeconds;
+        public float MinimumShotReleaseHeight => minimumShotReleaseHeight;
+        public float NaturalShotReleaseHandContact => naturalShotReleaseHandContact;
         public bool CameraCollisionEnabled => cameraCollisionEnabled;
         public LayerMask CameraCollisionMask => cameraCollisionMask;
         public float CameraCollisionRadius => cameraCollisionRadius;
@@ -263,7 +304,31 @@ namespace CrowdEyes.AI4Animation.Basketball
             maximumDirectPassSpeed = Mathf.Max(1f, maximumDirectPassSpeed);
             maximumLobPassSpeed = Mathf.Max(1f, maximumLobPassSpeed);
             maximumReceiverLeadDistance = Mathf.Max(0f, maximumReceiverLeadDistance);
-            forcedPassReleaseSeconds = Mathf.Max(0.52f, forcedPassReleaseSeconds);
+            passGatherSeconds = Mathf.Max(0f, passGatherSeconds);
+            passAlignSeconds = Mathf.Max(passGatherSeconds, passAlignSeconds);
+            passPushSeconds = Mathf.Max(passAlignSeconds + 0.05f, passPushSeconds);
+            minimumPassReleaseSeconds = Mathf.Clamp(
+                minimumPassReleaseSeconds,
+                0.05f,
+                passPushSeconds);
+            forcedPassReleaseSeconds = Mathf.Max(
+                minimumPassReleaseSeconds + 0.05f,
+                forcedPassReleaseSeconds);
+            shotApexClearance = Mathf.Max(0.2f, shotApexClearance);
+            maximumShotApexClearance = Mathf.Max(
+                shotApexClearance,
+                maximumShotApexClearance);
+            maximumShotLaunchSpeed = Mathf.Max(1f, maximumShotLaunchSpeed);
+            shotFacingDot = Mathf.Clamp01(shotFacingDot);
+            maximumShotAlignSeconds = Mathf.Max(0f, maximumShotAlignSeconds);
+            shotCommandTimeoutSeconds = Mathf.Max(0.5f, shotCommandTimeoutSeconds);
+            minimumShotReleaseSeconds = Mathf.Max(0.05f, minimumShotReleaseSeconds);
+            forcedShotReleaseSeconds = Mathf.Max(
+                minimumShotReleaseSeconds + 0.05f,
+                forcedShotReleaseSeconds);
+            minimumShotReleaseHeight = Mathf.Max(0.2f, minimumShotReleaseHeight);
+            naturalShotReleaseHandContact = Mathf.Clamp01(
+                naturalShotReleaseHandContact);
         }
     }
 }

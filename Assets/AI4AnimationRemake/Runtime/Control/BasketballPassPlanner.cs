@@ -23,6 +23,11 @@ namespace CrowdEyes.AI4Animation.Basketball
             Vector3 catchPoint = receiver.AimPoint;
             float flightTime = 0.5f;
             Vector3 desiredVelocity = Vector3.zero;
+            float requiredReleaseSpeed = 0f;
+            bool supported = true;
+            float maximumReleaseSpeed = passer != null
+                ? passer.MaximumPassReleaseSpeed
+                : 12f;
 
             for (int iteration = 0; iteration < 4; iteration++)
             {
@@ -41,8 +46,11 @@ namespace CrowdEyes.AI4Animation.Basketball
                     releasePosition,
                     passType,
                     settings,
+                    maximumReleaseSpeed,
                     out desiredVelocity,
-                    out flightTime);
+                    out flightTime,
+                    out requiredReleaseSpeed,
+                    out supported);
             }
             Vector3 desiredDirection = desiredVelocity.sqrMagnitude > 1e-8f
                 ? desiredVelocity.normalized
@@ -59,6 +67,13 @@ namespace CrowdEyes.AI4Animation.Basketball
                 DesiredReleasePosition = releasePosition,
                 DesiredReleaseDirection = desiredDirection,
                 DesiredReleaseVelocity = desiredVelocity,
+                RequiredReleaseSpeed = requiredReleaseSpeed,
+                MaximumAllowedReleaseSpeed = maximumReleaseSpeed,
+                IsSupported = supported && Vector3.Distance(
+                    releasePosition,
+                    catchPoint) <= (passer != null
+                    ? passer.MaximumEffectivePassDistance
+                    : 10.5f),
                 MaximumDirectionCorrection = 28f,
                 MaximumSpeedScale = 1.6f,
                 MaximumVerticalCorrection = 2.25f
@@ -76,10 +91,22 @@ namespace CrowdEyes.AI4Animation.Basketball
                 releasePosition,
                 plan.PassType,
                 settings != null ? settings : BasketballRuntimeSettings.LoadDefault(),
+                plan.Passer != null ? plan.Passer.MaximumPassReleaseSpeed : 12f,
                 out Vector3 velocity,
-                out float flightTime);
+                out float flightTime,
+                out float requiredReleaseSpeed,
+                out bool supported);
             plan.DesiredReleaseVelocity = velocity;
             plan.ExpectedFlightTime = flightTime;
+            plan.RequiredReleaseSpeed = requiredReleaseSpeed;
+            plan.MaximumAllowedReleaseSpeed = plan.Passer != null
+                ? plan.Passer.MaximumPassReleaseSpeed
+                : 12f;
+            plan.IsSupported = supported && plan.Passer != null &&
+                               Vector3.Distance(
+                                   releasePosition,
+                                   plan.PredictedCatchPoint) <=
+                               plan.Passer.MaximumEffectivePassDistance;
             plan.DesiredReleaseDirection = plan.DesiredReleaseVelocity.sqrMagnitude > 1e-8f
                 ? plan.DesiredReleaseVelocity.normalized
                 : plan.Passer.transform.forward;
@@ -90,8 +117,11 @@ namespace CrowdEyes.AI4Animation.Basketball
             Vector3 releasePosition,
             BasketballPassType passType,
             BasketballRuntimeSettings settings,
+            float maximumReleaseSpeed,
             out Vector3 velocity,
-            out float flightTime)
+            out float flightTime,
+            out float requiredReleaseSpeed,
+            out bool supported)
         {
             float gravity = Mathf.Max(0.1f, -Physics.gravity.y);
             float clearance = passType == BasketballPassType.Lob
@@ -154,6 +184,13 @@ namespace CrowdEyes.AI4Animation.Basketball
                 2f * gravity * Mathf.Max(0f, apexY - releasePosition.y));
             velocity = horizontal / Mathf.Max(0.05f, flightTime) +
                        Vector3.up * verticalSpeed;
+            requiredReleaseSpeed = velocity.magnitude;
+            maximumReleaseSpeed = Mathf.Max(1f, maximumReleaseSpeed);
+            supported = requiredReleaseSpeed <= maximumReleaseSpeed + 0.01f;
+            if (!supported)
+            {
+                velocity = Vector3.ClampMagnitude(velocity, maximumReleaseSpeed);
+            }
         }
 
         private static float CalculateFlightTime(

@@ -8,8 +8,20 @@ never writes presentation state back into the autoregressive model.
 ```text
 BasketballMatchController
   -> shared BasketballRuntimeSettings
+  -> 1v1 / 3v3 / 5v5 active mask over ten fixed GPU slots
+  -> human / mixed / full-rule-AI control selection
   -> team roster, Tab switching, pass/steal intent and possession arbitration
+  -> BasketballRuleBasedTeamAI
+       -> spacing, matchup, pass, shot, steal, catch and loose-ball decisions
+       -> BasketballIntent and legal BasketballPossessionManager requests only
   -> one BasketballIntent per player
+
+BasketballCourt
+  -> team-aware +Z / -Z BasketballHoop targets
+  -> FIBA two/three-point geometry
+  -> BasketballShotPlanner one-time ballistic release
+  -> BasketballScoreTracker downward plane crossing
+  -> post-score possession restart through BasketballPossessionManager
 
 BasketballKeyboardMouseInputProvider
   -> BasketballNeuralController.Control
@@ -32,8 +44,12 @@ Rendered player Transform
 
 Canonical interpolated pose
   -> BasketballHumanoidVisualRetargeter
-       -> position-driven limb swing + bounded wrist rotation
+       -> position-driven limb swing + arm-plane roll + neural hand rotation
        -> Humanoid visual skeleton only
+  -> BasketballHumanoidHandContactSolver
+       -> neural left/right hand Contact weights
+       -> palm anchor to physical ball surface
+       -> presentation-only two-bone arm correction + relaxed/contact finger curl
   -> BasketballPlayerAppearance
        -> shared team profiles + MaterialPropertyBlock colors
        -> centered skinned jersey-number patches
@@ -66,27 +82,54 @@ camera tuning, frame pacing, HUD sampling and shadow budget. 30 Hz is the canoni
 2020 rate; 20/15/10 Hz remain experimental. Changing the scheduler rate does not alter feature
 dimensions, Feed/Read order, normalization or fixed-step model formulas.
 
-The scheduler accumulates render time, prepares the next batch only when no GPU readback is
-pending, and commits the completed state before beginning another tick. Previous/current pose
-buffers remain neural-tick snapshots. Render frames apply position Lerp and quaternion Slerp;
-interpolation never becomes simulation input.
+The scheduler accumulates simulation time, prepares the next batch only when no GPU readback is
+pending, and commits the completed state before beginning another tick. A separate presentation
+clock resets to zero whenever a new previous/current pair is committed; GPU backlog therefore
+cannot force the new pose to alpha one on the same frame. Previous/current pose buffers remain
+neural-tick snapshots. Render frames apply position Lerp and quaternion Slerp; interpolation never
+becomes simulation input.
 
 ## Match and ball ownership
 
 - `BasketballMatchController` routes human/team commands and does not own possession truth.
+- `IBasketballDecisionPolicy` is the replaceable high-level boundary. Policies consume a
+  fixed-capacity `BasketballWorldObservation` plus per-player snapshots and return
+  `BasketballPlayerCommand` values. Match validates transactional skill requests before they
+  reach possession.
+- `BasketballMatchController.decisionPolicyBehaviour` accepts any `MonoBehaviour` implementing
+  that interface and falls back to `BasketballRuleBasedTeamAI` when none is assigned.
+- `BasketballRuleBasedTeamAI` is the first deterministic policy implementation. It never writes
+  pose, recurrent state, player transforms, Owner, or ball physics. It consumes world-event
+  outcomes to invalidate stale tactical/action caches after possession and skill transitions.
+- `BasketballWorldEventStream` is a bounded, allocation-free-after-initialization ring buffer for
+  possession and skill outcomes. It is the current capture seam for Debug and future RL/surrogate
+  export. Policies may additionally implement `IBasketballWorldEventObserver`; Match then delivers
+  each retained event once, in sequence order, before the next decision frame. A lagging consumer
+  resumes from the oldest still-retained event instead of replaying stale data.
+- `BasketballPlayerObservation.ActionMask` exposes mode- and possession-aware legal high-level
+  actions without changing the 864-float neural model input. Inactive slots always expose `None`.
+- `BasketballSkillTelemetryRecorder` is an optional, default-off JSONL sink for world events. File
+  I/O is isolated from control and can be disabled for performance acceptance runs. Schema v2
+  includes the actual event pose/velocity plus a skill target position and variant, so pass type,
+  predicted catch point and shot target remain available to offline surrogate tooling.
 - `BasketballPossessionManager` is the single owner of possession version, owner,
   pass/shot/loose/contested/catch states and touch-before-secure arbitration.
 - Only the owner may apply a predicted controlled ball pose. Released/free flight is Rigidbody
   authoritative and receives no in-flight homing correction.
+- `BasketballCourt` maps Team 0 to +Z and Team 1 to -Z. Shot release solves one projectile
+  velocity to that hoop; scoring requires a downward center-plane crossing and uses the stored
+  release position for two/three-point classification.
 - `BasketballTeamMember` stores stable player index, team ID, jersey number and player references.
+- Match modes preserve the deployed `[10,864]` graph. Inactive slots are deactivated gameplay
+  objects and excluded from Tab, pass, Rival, catch, steal and loose-ball candidate loops.
 - `BasketballHumanoidVisualRetargeter` is presentation-only. It restores the canonical mannequin
   whenever the optional Humanoid visual cannot be validated, so a broken skin cannot hide the
   neural reference rig.
 - `ThirdPersonOrbitCamera` and UI Toolkit are presentation systems. Camera heading enters control
   only while interpreting keyboard movement. Its pivot is smoothed independently from the neural
   clock, and collision ignores dynamic player/ball colliders.
-- Future route-planning AI should produce `BasketballIntent`; it must not write recurrent state,
-  player transforms or ball Rigidbody state directly.
+- Future route-planning or RL AI should preserve the current `BasketballIntent` and possession
+  request boundary; it must not write recurrent state, player transforms or ball Rigidbody state.
 
 ## Allocation and lifetime policy
 

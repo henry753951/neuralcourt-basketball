@@ -21,8 +21,18 @@ namespace CrowdEyes.AI4Animation.Basketball
         [SerializeField]
         private BasketballBallAuthorityState state = BasketballBallAuthorityState.Controlled;
 
+        [SerializeField, Min(0.1f)]
+        private float reacquireMaximumSpeed = 7.5f;
+
+        [SerializeField, Min(1f)]
+        private float reacquireMaximumAngularSpeed = 1080f;
+
+        [SerializeField, Min(0.001f)]
+        private float reacquireCompletionDistance = 0.015f;
+
         private Rigidbody body;
         private Vector3 controlledVelocity;
+        private bool blendControlledPose;
 
         public float Radius => radius;
         public BasketballBallAuthorityState State => state;
@@ -37,6 +47,7 @@ namespace CrowdEyes.AI4Animation.Basketball
         public void SetState(BasketballBallAuthorityState value)
         {
             state = value;
+            blendControlledPose = value == BasketballBallAuthorityState.Reacquiring;
             ApplyAuthority();
         }
 
@@ -49,11 +60,25 @@ namespace CrowdEyes.AI4Animation.Basketball
                 return;
             }
 
-            if (state == BasketballBallAuthorityState.Reacquiring)
+            if (blendControlledPose)
             {
+                float deltaTime = Mathf.Max(0f, Time.deltaTime);
+                Vector3 nextPosition = Vector3.MoveTowards(
+                    transform.position,
+                    position,
+                    reacquireMaximumSpeed * deltaTime);
+                Quaternion nextRotation = Quaternion.RotateTowards(
+                    transform.rotation,
+                    rotation,
+                    reacquireMaximumAngularSpeed * deltaTime);
                 transform.SetPositionAndRotation(
-                    Vector3.Lerp(transform.position, position, 0.35f),
-                    Quaternion.Slerp(transform.rotation, rotation, 0.35f));
+                    nextPosition,
+                    nextRotation);
+                if ((nextPosition - position).sqrMagnitude <=
+                    reacquireCompletionDistance * reacquireCompletionDistance)
+                {
+                    blendControlledPose = false;
+                }
             }
             else
             {
@@ -64,8 +89,7 @@ namespace CrowdEyes.AI4Animation.Basketball
 
         public void Release(Vector3 linearVelocity, Vector3 angularVelocity)
         {
-            state = BasketballBallAuthorityState.Released;
-            ApplyAuthority();
+            SetState(BasketballBallAuthorityState.Released);
             controlledVelocity = linearVelocity;
             Body.linearVelocity = linearVelocity;
             Body.angularVelocity = angularVelocity;
@@ -88,7 +112,19 @@ namespace CrowdEyes.AI4Animation.Basketball
 
         public void CompleteReacquire(bool held)
         {
-            SetState(held ? BasketballBallAuthorityState.Held : BasketballBallAuthorityState.Controlled);
+            state = held
+                ? BasketballBallAuthorityState.Held
+                : BasketballBallAuthorityState.Controlled;
+            ApplyAuthority();
+        }
+
+        public void BeginControlledHandoff(bool held)
+        {
+            state = held
+                ? BasketballBallAuthorityState.Held
+                : BasketballBallAuthorityState.Controlled;
+            blendControlledPose = true;
+            ApplyAuthority();
         }
 
         private void FixedUpdate()
@@ -119,6 +155,7 @@ namespace CrowdEyes.AI4Animation.Basketball
         {
             radius = value;
             state = initialState;
+            blendControlledPose = false;
         }
 #endif
     }

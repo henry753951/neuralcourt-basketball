@@ -39,6 +39,8 @@ namespace CrowdEyes.AI4Animation.Basketball
         private Vector3 smoothedTargetPosition;
         private bool initialized;
         private bool cursorLocked;
+        private bool freeCameraMode;
+        private Vector3 freeMoveInput;
         private int collisionQueryCountdown;
         private float cachedCollisionDistance;
         private readonly RaycastHit[] collisionHits = new RaycastHit[32];
@@ -49,10 +51,11 @@ namespace CrowdEyes.AI4Animation.Basketball
         public Transform Target => target;
         public float CurrentDistance => currentDistance;
         public bool CursorLocked => cursorLocked;
+        public bool IsFreeCameraMode => freeCameraMode;
         public Vector3 PlanarForward =>
             Quaternion.Euler(0f, currentYaw, 0f) * Vector3.forward;
         public bool IsBallControlMode =>
-            Mouse.current != null && Mouse.current.rightButton.isPressed;
+            !freeCameraMode && Mouse.current != null && Mouse.current.rightButton.isPressed;
 
         private void OnEnable()
         {
@@ -81,7 +84,7 @@ namespace CrowdEyes.AI4Animation.Basketball
             using (CameraInputMarker.Auto())
             {
                 BasketballRuntimeSettings settings = RuntimeSettings;
-                if (target == null || settings == null)
+                if (settings == null)
                 {
                     return;
                 }
@@ -95,10 +98,40 @@ namespace CrowdEyes.AI4Animation.Basketball
 
                 if (!cursorLocked)
                 {
+                    freeMoveInput = Vector3.zero;
                     if (mouse != null && mouse.leftButton.wasPressedThisFrame)
                     {
                         SetCursorLocked(true);
                     }
+                    return;
+                }
+
+                if (freeCameraMode)
+                {
+                    if (mouse != null)
+                    {
+                        Vector2 delta = mouse.delta.ReadValue();
+                        desiredYaw += delta.x * settings.MouseSensitivity;
+                        desiredPitch = Mathf.Clamp(
+                            desiredPitch - delta.y * settings.MouseSensitivity,
+                            settings.MinimumPitch,
+                            settings.MaximumPitch);
+                    }
+                    freeMoveInput = keyboard != null
+                        ? new Vector3(
+                            (keyboard.dKey.isPressed ? 1f : 0f) -
+                            (keyboard.aKey.isPressed ? 1f : 0f),
+                            (keyboard.eKey.isPressed ? 1f : 0f) -
+                            (keyboard.qKey.isPressed ? 1f : 0f),
+                            (keyboard.wKey.isPressed ? 1f : 0f) -
+                            (keyboard.sKey.isPressed ? 1f : 0f))
+                        : Vector3.zero;
+                    freeMoveInput = Vector3.ClampMagnitude(freeMoveInput, 1f);
+                    return;
+                }
+
+                if (target == null)
+                {
                     return;
                 }
 
@@ -134,7 +167,16 @@ namespace CrowdEyes.AI4Animation.Basketball
             using (CameraMarker.Auto())
             {
                 BasketballRuntimeSettings settings = RuntimeSettings;
-                if (target == null || settings == null)
+                if (settings == null)
+                {
+                    return;
+                }
+                if (freeCameraMode)
+                {
+                    UpdateFreeCamera(settings);
+                    return;
+                }
+                if (target == null)
                 {
                     return;
                 }
@@ -219,10 +261,63 @@ namespace CrowdEyes.AI4Animation.Basketball
             }
             target = followTarget;
             collisionQueryCountdown = 0;
-            if (!initialized && target != null)
+            if (!freeCameraMode && !initialized && target != null)
             {
                 InitializeFromCurrentPose();
             }
+        }
+
+        public void SetFreeCameraMode(bool enabled)
+        {
+            if (freeCameraMode == enabled)
+            {
+                return;
+            }
+
+            freeCameraMode = enabled;
+            freeMoveInput = Vector3.zero;
+            positionVelocity = Vector3.zero;
+            targetPositionVelocity = Vector3.zero;
+            yawVelocity = 0f;
+            pitchVelocity = 0f;
+            distanceVelocity = 0f;
+
+            Vector3 angles = transform.rotation.eulerAngles;
+            desiredYaw = currentYaw = angles.y;
+            desiredPitch = currentPitch = Mathf.Clamp(
+                NormalizeAngle(angles.x),
+                RuntimeSettings.MinimumPitch,
+                RuntimeSettings.MaximumPitch);
+            if (enabled)
+            {
+                initialized = true;
+                return;
+            }
+
+            BasketballRuntimeSettings settings = RuntimeSettings;
+            if (target == null || settings == null)
+            {
+                initialized = false;
+                return;
+            }
+            Vector3 targetPivot = target.position + pivotOffset;
+            currentDistance = Mathf.Clamp(
+                Vector3.Distance(transform.position, targetPivot),
+                settings.MinimumCameraDistance,
+                settings.MaximumCameraDistance);
+            // Begin the return orbit from the camera's current view ray. The
+            // normal target SmoothDamp then moves this virtual pivot to the
+            // player, so neither position nor rotation snaps on the P toggle.
+            smoothedTargetPosition = transform.position +
+                                     transform.forward * currentDistance -
+                                     pivotOffset;
+            desiredDistance = Mathf.Clamp(
+                settings.CameraDistance,
+                settings.MinimumCameraDistance,
+                settings.MaximumCameraDistance);
+            cachedCollisionDistance = currentDistance;
+            collisionQueryCountdown = 0;
+            initialized = true;
         }
 
         public void SetHeading(float yaw, bool snap)
@@ -288,6 +383,38 @@ namespace CrowdEyes.AI4Animation.Basketball
             initialized = true;
         }
 
+        private void UpdateFreeCamera(BasketballRuntimeSettings settings)
+        {
+            float deltaTime = Mathf.Max(Time.unscaledDeltaTime, 0.0001f);
+            currentYaw = Mathf.SmoothDampAngle(
+                currentYaw,
+                desiredYaw,
+                ref yawVelocity,
+                settings.RotationSmoothTime,
+                Mathf.Infinity,
+                deltaTime);
+            currentPitch = Mathf.SmoothDampAngle(
+                currentPitch,
+                desiredPitch,
+                ref pitchVelocity,
+                settings.RotationSmoothTime,
+                Mathf.Infinity,
+                deltaTime);
+            Quaternion rotation = Quaternion.Euler(currentPitch, currentYaw, 0f);
+            bool fast = Keyboard.current != null &&
+                        (Keyboard.current.leftShiftKey.isPressed ||
+                         Keyboard.current.rightShiftKey.isPressed);
+            float speed = fast ? 20f : 7f;
+            Vector3 planarMove = rotation * new Vector3(
+                freeMoveInput.x,
+                0f,
+                freeMoveInput.z);
+            Vector3 movement = planarMove + Vector3.up * freeMoveInput.y;
+            transform.SetPositionAndRotation(
+                transform.position + movement * speed * deltaTime,
+                rotation);
+        }
+
         private float ResolveCollisionDistance(
             Vector3 pivot,
             Vector3 cameraDirection,
@@ -320,7 +447,9 @@ namespace CrowdEyes.AI4Animation.Basketball
                 {
                     RaycastHit hit = collisionHits[index];
                     Collider collider = hit.collider;
-                    if (collider == null || IsDynamicBasketballObject(collider))
+                    if (collider == null ||
+                        IsDynamicBasketballObject(collider) ||
+                        collider.GetComponentInParent<BasketballCourtBoundary>() != null)
                     {
                         continue;
                     }

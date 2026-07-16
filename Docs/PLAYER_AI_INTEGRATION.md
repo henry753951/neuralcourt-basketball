@@ -1,31 +1,34 @@
 # Player AI Integration Analysis
 
-Last reviewed: 2026-07-14
+Last reviewed: 2026-07-15
 
 This document records the current ten-player 5v5 reference architecture and the safe integration
 boundary for future player, team, navigation, and network AI. The scene now contains a minimal
-match coordinator, simple teams, one shared ball, human player switching, teammate-only passing,
-and contact-validated opponent steals. It still does not contain navigation or tactical AI.
+match coordinator, variable 1v1/3v3/5v5 active rosters, one shared ball, human player switching,
+teammate-only passing, contact-validated opponent steals, team-aware shooting and a first
+rule-based tactical baseline. It does not yet contain NavMesh path planning or polished tactics.
 
 ## Current runtime path
 
 ```text
 Keyboard / mouse + Tab player selection
   -> BasketballMatchController
-       -> simple team/pass/possession rules
+       -> active mask + human / mixed / Full Rule AI selection
+       -> BasketballRuleBasedTeamAI for non-human active players
+       -> team/pass/shot/possession rules
        -> one BasketballIntent override per player
   -> BasketballKeyboardMouseInputProvider
   -> BasketballIntent
   -> BasketballNeuralController.ApplyControl               shared neural tick
   -> BasketballAgentState recurrent series
-  -> BasketballFeatureBuilder                              3 x 864 floats
-  -> BasketballSentisBatchScheduler                        GPUCompute 3-player MoE
+  -> BasketballFeatureBuilder                              10 x 864 floats
+  -> BasketballSentisBatchScheduler                        GPUCompute Batch10 MoE
   -> BasketballOutputDecoder                               588 floats
   -> previous/current BasketballPoseBuffer
   -> BasketballPoseApplicator + contact IK                 render frame
   -> canonical 26-bone rig
 
-3 x BasketballAgentState <-> one BasketballBallController <-> Rigidbody
+10 x BasketballAgentState <-> one BasketballBallController <-> Rigidbody
 Rendered player pose  -> ThirdPersonOrbitCamera
 BasketballAgentState  -> debug visualizer and UI Toolkit HUD
 ```
@@ -49,7 +52,8 @@ render interpolation; they do not retime the model equations.
 
 ## Current match and team layer
 
-- P1 and P2 use Team A; P3 uses Team B.
+- P1-P5 use Team A; P6-P10 use Team B in 5v5. Match mode can activate 1, 3, 5 or
+  custom counts per team while preserving ten GPU slots.
 - `BasketballTeamMember` supplies stable player/team identity and per-agent references.
 - `BasketballMatchController` selects the active human, routes independent intents, filters pass
   targets by team, and controls target indicators.
@@ -62,6 +66,9 @@ render interpolation; they do not retime the model equations.
 - Steal is a separate runtime intent because Hold is not a steal label. A model-only proxy gives
   the defender pose context, but a real swept hand-ball touch must produce Loose/Contested first;
   possession can change only in a later secure arbitration.
+- `BasketballRuleBasedTeamAI` selects world movement, facing, pass, shoot, catch and steal intents
+  for AI-controlled active players. It uses the same low-level skills and authority APIs as the
+  human path and cannot directly assign Owner or move the ball.
 
 These are match rules around the pretrained model. Team ID, target selection and possession
 authority are not added to the model's 864 inputs and do not change its 588 outputs.
@@ -164,20 +171,31 @@ Team / coach AI
   -> unchanged 30 Hz BasketballNeuralController and pretrained model
 ```
 
-Introduce multiple interchangeable intent sources:
+The runtime now exposes a first interchangeable policy boundary:
 
 ```csharp
-public interface IBasketballIntentSource
+public interface IBasketballDecisionPolicy
 {
-    void Sample(in BasketballObservation observation, ref BasketballIntent intent);
+    void BeginDecisionFrame(BasketballWorldObservation observation);
+    BasketballPlayerCommand Decide(in BasketballPlayerObservation player);
+    void ReportCommandResult(
+        in BasketballPlayerCommand command,
+        BasketballSkillCommandResult result);
+}
+
+// Optional: receive delayed, multi-tick outcomes before the next decision frame.
+public interface IBasketballWorldEventObserver
+{
+    void ObserveEvent(in BasketballWorldEvent worldEvent);
 }
 ```
 
-Expected implementations are `HumanIntentSource`, `AIIntentSource`,
-`ScriptedScenarioIntentSource`, and eventually `NetworkIntentSource`. The current controller is
-still wired to the concrete `BasketballKeyboardMouseInputProvider`, while the match uses its
-existing override seam for standby intents. Introducing this interface remains the first
-behavior-preserving refactor required before real player AI.
+`BasketballRuleBasedTeamAI` is the first implementation. It outputs a
+`BasketballPlayerCommand`; `BasketballMatchController` validates the actor, possession version,
+target team and current ball state before forwarding a pass request to
+`BasketballPossessionManager`. A rejected or stale command is acknowledged back to the policy and
+cannot mutate possession. Human keyboard/mouse input intentionally remains a direct input source
+for the selected player.
 
 An AI planner should preferably emit a higher-level command in world space:
 
@@ -193,14 +211,36 @@ unusual control semantics.
 
 ## Observation contract needed by AI
 
-Expose a read-only, allocation-free observation snapshot rather than the mutable agent state:
+`BasketballWorldObservation` is a fixed-capacity, allocation-free snapshot rather than a mutable
+view of recurrent agent state. It currently exposes:
 
 - self root pose, facing, linear velocity, current style/action indicators;
 - carrier flag and ball authority state;
 - ball pose and velocity;
 - hoop, court, teammate, and opponent relative observations;
 - contact values and action readiness/cooldowns;
-- current command result: pending, consumed, succeeded, failed, or expired.
+- fixed roster slots with Active flags, stable player/team IDs, root pose and velocity;
+- owner, previous owner, intended receiver and possession version;
+- ball state, control mode, pose and velocity;
+- both team attack targets, active counts, match mode and score.
+
+The policy receives one `BasketballPlayerObservation` plus the shared world snapshot. Future
+external bridges can serialize this data-only surface without exposing Unity Transforms or model
+buffers. Pass skill requests already carry a stable command ID, possession transaction version and
+expiry. Immediate validation is returned through `ReportCommandResult`; delayed physical outcomes
+are available through the optional `IBasketballWorldEventObserver` interface.
+
+`BasketballWorldEventStream` adds a fixed-size ring buffer for possession, pass request/release,
+pass catch/failure/interception, shot release/make/miss, steal touch, contested/loose ball, secure
+and match restart events. It overwrites the oldest record instead of growing a managed list.
+Observer delivery is ordered and once-only. If a consumer falls behind beyond ring capacity, it
+continues at `OldestSequence`; overwritten events remain available from optional JSONL telemetry,
+not from the runtime ring.
+
+The JSONL `basketball-world-event-v2` record also carries `targetPosition` and `skillVariant`.
+Pass records use these for the predicted catch point and `BasketballPassType`; shot records use the
+resolved hoop target. The event `position` and `velocity` remain the actual physical state, so the
+offline dataset can measure planning error without treating a desired target as ground truth.
 
 The single-agent feature builder currently leaves legacy interaction blocks zero-filled. Adding
 opponents to tactical observations does not automatically mean they should be written into the
@@ -223,29 +263,34 @@ the original demo contract.
 
 ## Current limitations relevant to future AI
 
-- There is no `IBasketballIntentSource` yet; active human input and match-generated standby
-  overrides are still routed by concrete components.
+- Human and policy routing are still coordinated by `BasketballMatchController`, but rule AI now
+  crosses an explicit data snapshot/command interface. Human input-source unification remains
+  future work.
 - Movement-space semantics are partially coupled to camera/gamepad compatibility.
 - Keyboard control does not currently expose Spin or BallHeight, although the neural control
   path contains those channels.
 - Ball-speed control is internal rather than an explicit intent value.
-- Team identity, teammate-only pass filtering and atomic single-ball ownership now exist, but
-  tactical roles, navigation, avoidance, pass evaluation and defensive pursuit do not.
+- The baseline AI includes deterministic spacing, rank-based matchups, pass evaluation, defensive
+  pursuit, one shared team plan and at most one loose-ball/rebound chaser per team. It does not yet
+  contain path planning, screens, rotations,
+  fouls, clock rules, substitutions or polished playbooks.
 - The current opponent steal has contact-validated Touch/Loose/Secure gameplay but no dedicated
-  learned poke animation. Unselected players intentionally remain Stand until future AI supplies
-  an explicit movement, catch or steal intent.
-- Shared immutable model storage and stagger/batch scheduling still need multi-agent profiling.
+  learned poke animation. `SelectedPlayerOnly` remains available for the original standby
+  comparison; mixed/full modes explicitly supply AI movement, catch and steal intents.
+- Batch10 GPU scheduling is deployed, but full-match allocation and long-duration profiling still
+  need owner validation.
 - A phase-amplitude safety clamp protects the current closed loop from non-finite feedback; this
   is a documented safety difference while the remaining legacy feedback details are evaluated.
 
 ## Recommended next implementation order
 
-1. Add `IBasketballIntentSource` and preserve the current human/match adapters bit-for-bit.
-2. Add read-only `BasketballObservation` including roster, owner, ball and pass-target state.
-3. Add a world-space `PlayerCommand` to legacy-intent adapter, including action latching and
-   acknowledgement.
-4. Replace one standby player with scripted navigation/catch behavior, then one opponent with
-   approach/steal behavior, without changing model I/O.
-5. Add tactical pass choice, spacing and defensive assignment above the player command layer.
-6. Only after parity and profiling, introduce shared weight storage, staggered scheduling, LOD,
-   and optional batch inference.
+1. Extend multi-tick skill-result acknowledgement to shot/steal/movement as well as pass.
+2. Add screen/pick timing, defensive switch communication and rebound landing prediction on top
+   of the current Cutter, Safety, Help Defender, box-out and local-avoidance baseline.
+3. Add a transport adapter for an external RL policy; action masks and optional JSONL skill-event
+   export are already available without a Python runtime dependency.
+4. Complete long 1v1/3v3/5v5 quality, memory and Profiler acceptance before expanding tactics.
+
+Runtime roster changes now use deterministic court-local formations and a GPU readback barrier.
+Every player's closed-loop root, bone, ball, contact, phase and intent state is re-seeded before a
+new Batch10 inference can be dispatched.

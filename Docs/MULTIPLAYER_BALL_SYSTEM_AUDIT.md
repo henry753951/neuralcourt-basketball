@@ -62,7 +62,7 @@ cannot modify the new possession.
 ## Current input contract
 
 - `Space`: Shoot only.
-- `Ctrl` + left mouse: select teammate and fake/commit pass.
+- `Ctrl` + left mouse: select teammate and immediately commit one pass.
 - Left mouse while defending: Steal/Tip; continue holding to attempt Secure after a loose touch.
 - `Ctrl` alone: original Hold/Catch.
 - `Tab`: switch controlled player.
@@ -80,9 +80,9 @@ system uses remote suction or flight guidance.
 1. Leave P1 selected for 20 seconds while P2/P3 are visible. Confirm idle hands and torso do not
    follow the ball or lift without a pass/steal interaction.
 2. Press `Space` and confirm it only shoots; it must not enter teammate targeting.
-3. Hold `Ctrl`, look at P2, tap left mouse, and confirm fake without release.
-4. Hold `Ctrl` + left mouse for at least 0.2 seconds. Confirm the ball releases toward P2 after
-   the preparation window and that target selection does not move the Ball Control disk/pose.
+3. Hold `Ctrl`, look at P2, click left mouse once, and confirm a single pass request.
+4. Confirm the ball releases toward P2 after the shortened preparation window and that target
+   selection does not move the Ball Control disk/pose.
 5. During flight, move the camera and receiver. The airborne trajectory must not steer.
 6. Watch P2 before release: P2 should move toward the predicted catch point and face the passer,
    then raise its catch posture only as the real ball approaches.

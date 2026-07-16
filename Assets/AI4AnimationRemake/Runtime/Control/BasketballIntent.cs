@@ -18,8 +18,11 @@ namespace CrowdEyes.AI4Animation.Basketball
         // Runtime interaction intent only. The 2020 model has no Steal style
         // channel, so this must never be presented as a learned steal label.
         public bool Steal;
+        // Off-ball request metadata for team AI. This never changes the
+        // pretrained model contract and never forces an immediate pass.
+        public bool CallForPass;
         // Match-layer metadata. The pretrained model still sees the original Shoot style;
-        // this pair only decides whether a targeted fake may hand the shared ball to physics.
+        // this pair only decides whether a targeted command may hand the shared ball to physics.
         public bool PassTargeting;
         public bool CommitBallRelease;
         // Pass preparation may reuse the original Hold style and root-facing

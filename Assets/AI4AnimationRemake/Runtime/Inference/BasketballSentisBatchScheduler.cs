@@ -25,7 +25,6 @@ namespace CrowdEyes.AI4Animation.Basketball
         private const string InputName = "input";
         private const string OutputName = "batch_output";
         private const int MaximumReadbackRetries = 2;
-
         private static readonly ProfilerMarker InferenceMarker =
             new("Basketball.Inference");
         private static readonly ProfilerMarker ScheduleMarker =
@@ -50,9 +49,11 @@ namespace CrowdEyes.AI4Animation.Basketball
         private AsyncGPUReadbackRequest readbackRequest;
         private SchedulerState schedulerState;
         private float accumulator;
+        private float presentationElapsed = 1f / BasketballAgentState.Framerate;
         private double inferenceStartTime;
         private bool controllersAttached;
         private bool readbackInFlight;
+        private bool stateResetBarrierRequested;
         private int readbackRetryCount;
         private float tickInterval = 1f / BasketballAgentState.Framerate;
         private int maximumBufferedTicks = 4;
@@ -72,6 +73,7 @@ namespace CrowdEyes.AI4Animation.Basketball
         public bool IsReadbackPending => schedulerState == SchedulerState.Running &&
                                          pendingOutput != null;
         public bool IsOperational => schedulerState == SchedulerState.Running;
+        public bool IsStateResetBarrierRequested => stateResetBarrierRequested;
 
         private enum SchedulerState
         {
@@ -106,10 +108,14 @@ namespace CrowdEyes.AI4Animation.Basketball
             }
 
             ResolveSchedulingSettings();
-            accumulator += Mathf.Min(
+            float frameDelta = Mathf.Min(
                 Time.deltaTime,
                 tickInterval * maximumBufferedTicks);
+            accumulator += frameDelta;
             accumulator = Mathf.Min(accumulator, tickInterval * maximumBufferedTicks);
+            presentationElapsed = Mathf.Min(
+                presentationElapsed + frameDelta,
+                tickInterval);
 
             if (pendingOutput != null)
             {
@@ -122,6 +128,15 @@ namespace CrowdEyes.AI4Animation.Basketball
                 {
                     return;
                 }
+            }
+
+            if (stateResetBarrierRequested)
+            {
+                // A match reset is waiting for the just-completed recurrent
+                // state. Do not dispatch another batch until the match applies
+                // the reset at its earlier execution order on the next frame.
+                UpdateInterpolationAlpha();
+                return;
             }
 
             if (accumulator >= tickInterval)
@@ -156,6 +171,16 @@ namespace CrowdEyes.AI4Animation.Basketball
             }
             players = teamMembers;
             InitializeScheduler();
+        }
+
+        public void RequestStateResetBarrier()
+        {
+            stateResetBarrierRequested = true;
+        }
+
+        public void ReleaseStateResetBarrier()
+        {
+            stateResetBarrierRequested = false;
         }
 
         private void InitializeScheduler()
@@ -260,6 +285,7 @@ namespace CrowdEyes.AI4Animation.Basketball
                 accumulator = Mathf.Min(
                     accumulator,
                     tickInterval * maximumBufferedTicks);
+                presentationElapsed = Mathf.Min(presentationElapsed, tickInterval);
             }
         }
 
@@ -287,6 +313,7 @@ namespace CrowdEyes.AI4Animation.Basketball
                 CopyAndValidateReadback();
                 pendingOutput = null;
                 accumulator = 0f;
+                presentationElapsed = tickInterval;
                 LastRoundTripMilliseconds = -1f;
                 schedulerState = SchedulerState.Running;
             }
@@ -353,6 +380,10 @@ namespace CrowdEyes.AI4Animation.Basketball
 
                 pendingOutput = null;
                 accumulator = Mathf.Max(0f, accumulator - tickInterval);
+                // A newly committed previous/current pair must begin at alpha 0.
+                // Scheduling backlog is a simulation concern and must not snap the
+                // presentation directly to the new current pose.
+                presentationElapsed = 0f;
                 LastRoundTripMilliseconds = (float)(
                     (Time.realtimeSinceStartupAsDouble - inferenceStartTime) * 1000.0);
                 return true;
@@ -476,7 +507,7 @@ namespace CrowdEyes.AI4Animation.Basketball
 
         private void UpdateInterpolationAlpha()
         {
-            float alpha = Mathf.Clamp01(accumulator / tickInterval);
+            float alpha = Mathf.Clamp01(presentationElapsed / tickInterval);
             for (int index = 0; index < BatchSize; index++)
             {
                 if (controllers[index] != null)

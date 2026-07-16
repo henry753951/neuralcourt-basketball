@@ -57,6 +57,44 @@ namespace CrowdEyes.AI4Animation.Basketball
             }
         }
 
+        public void ResolveAfterDecode(BasketballAgentState state)
+        {
+            Vector3 decodedActorPosition = state.ActorRootPosition;
+            Resolve(state);
+
+            // Decode writes ActorRootPosition, the trajectory pivot and every
+            // bone in world space before collision handling. Resolve() used to
+            // correct only RootSeries, allowing the rendered actor to cross an
+            // obstacle even though its future trajectory stopped at the wall.
+            // Translate the decoded pose by the same pivot correction so the
+            // skeleton remains rigid and the recurrent state stays coherent.
+            Vector3 correction =
+                state.RootPositions[BasketballAgentState.Pivot] -
+                decodedActorPosition;
+            if (correction.sqrMagnitude <= 1e-12f)
+            {
+                return;
+            }
+
+            state.ActorRootPosition += correction;
+            for (int bone = 0; bone < BasketballSkeleton.BoneCount; bone++)
+            {
+                state.BonePositions[bone] += correction;
+            }
+
+            if (!state.Carrier)
+            {
+                return;
+            }
+
+            for (int sample = BasketballAgentState.Pivot;
+                 sample < BasketballAgentState.SampleCount;
+                 sample++)
+            {
+                state.BallPositions[sample] += correction;
+            }
+        }
+
         private Vector3 SafetyProjection(Vector3 pivot)
         {
             int count = Physics.OverlapSphereNonAlloc(

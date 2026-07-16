@@ -36,6 +36,16 @@ namespace CrowdEyes.AI4Animation.Editor
         private const string RedProfilePath = AppearanceRoot + "/Team_Red.asset";
         private const string VisualPrefabPath =
             CharacterRoot + "/BasketballPlayerVisual.prefab";
+        private const string PlayerPrefabPath =
+            CharacterRoot + "/BasketballPlayer.prefab";
+        private const string TeamsPrefabPath =
+            CharacterRoot + "/BasketballTeams.prefab";
+        private const string CourtRoot = "Assets/AI4AnimationRemake/Court/CrowdEyesTwin";
+        private const string SourceCourtTemplatePath =
+            CourtRoot + "/Source/BasketballSyntheticDataEnvironment.prefab";
+        private const string CourtMaterialRoot = CourtRoot + "/Materials";
+        private const string CourtPrefabPath = CourtRoot + "/BasketballCourt.prefab";
+        private const string CourtFloorTexturePath = CourtRoot + "/Source/wood_floor.jpg";
         private const string OneShotMarker =
             "Assets/AI4AnimationRemake/Editor/BuildBasketballFiveVsFive.once";
 
@@ -62,6 +72,32 @@ namespace CrowdEyes.AI4Animation.Editor
         public static void BuildFromMenu()
         {
             BuildActiveBasketballScene();
+        }
+
+        [MenuItem("Tools/AI4Animation/Build CrowdEyes-Twin Basketball Court")]
+        public static void BuildCourtFromMenu()
+        {
+            Scene scene = SceneManager.GetActiveScene();
+            if (!scene.IsValid() || scene.path != ScenePath)
+            {
+                throw new InvalidOperationException(
+                    $"Open {ScenePath} before building the court. Active scene: {scene.path}");
+            }
+
+            GameObject courtPrefab = BuildCourtPrefab();
+            BasketballCourt court = InstallCourt(scene, courtPrefab);
+            BasketballTeamMember[] players = Object
+                .FindObjectsByType<BasketballTeamMember>(FindObjectsInactive.Include)
+                .Where(player => player.gameObject.scene == scene)
+                .OrderBy(player => player.PlayerIndex)
+                .ToArray();
+            WireMatch(players, court);
+            EditorSceneManager.MarkSceneDirty(scene);
+            EditorSceneManager.SaveScene(scene);
+            AssetDatabase.SaveAssets();
+            Debug.Log(
+                "BasketballDemo now uses the CrowdEyes-Twin FIBA court, two " +
+                "team-aware hoops, aimed shot physics, and score tracking.");
         }
 
         private static void TryRunOneShot()
@@ -108,8 +144,10 @@ namespace CrowdEyes.AI4Animation.Editor
                     ModelPath,
                     ImportAssetOptions.ForceSynchronousImport | ImportAssetOptions.ForceUpdate);
                 GameObject visualPrefab = BuildVisualPrefab();
+                GameObject courtPrefab = BuildCourtPrefab();
+                BasketballCourt court = InstallCourt(scene, courtPrefab);
                 BasketballTeamMember[] players = BuildPlayers(scene, visualPrefab);
-                WireMatch(players);
+                WireMatch(players, court);
             }
             finally
             {
@@ -246,6 +284,9 @@ namespace CrowdEyes.AI4Animation.Editor
                 BasketballHumanoidVisualRetargeter retargeter =
                     root.AddComponent<BasketballHumanoidVisualRetargeter>();
                 retargeter.Configure(animator);
+                BasketballHumanoidHandContactSolver handContact =
+                    root.AddComponent<BasketballHumanoidHandContactSolver>();
+                handContact.Configure(retargeter);
                 BasketballJerseyNumberDisplay numberDisplay =
                     BuildJerseyNumberDisplay(root, jerseyRenderer, numberMaterial);
                 BasketballPlayerAppearance appearance =
@@ -697,63 +738,567 @@ namespace CrowdEyes.AI4Animation.Editor
                 StringComparison.OrdinalIgnoreCase);
         }
 
+        private static GameObject BuildCourtPrefab()
+        {
+            GameObject existing = AssetDatabase.LoadAssetAtPath<GameObject>(CourtPrefabPath);
+            BasketballCourt existingCourt = existing != null
+                ? existing.GetComponent<BasketballCourt>()
+                : null;
+            Transform existingGeometry = existing != null
+                ? existing.transform.Find("Geometry")
+                : null;
+            bool usesDemoAxes = existingGeometry != null && Quaternion.Angle(
+                existingGeometry.localRotation,
+                Quaternion.Euler(0f, -90f, 0f)) < 0.1f;
+            if (existingCourt != null && existingCourt.PositiveZHoop != null &&
+                existingCourt.NegativeZHoop != null &&
+                usesDemoAxes)
+            {
+                Material existingRedBoxMaterial = CreateCourtMaterial(
+                    "BackboardTarget_URP",
+                    null,
+                    new Color(0.34f, 0.018f, 0.012f, 1f),
+                    0.05f,
+                    reflective: false);
+                EnsurePrefabRendererMaterial(
+                    CourtPrefabPath,
+                    "RedBox",
+                    existingRedBoxMaterial);
+                EnsurePrefabCourtBoundaries(CourtPrefabPath);
+                return AssetDatabase.LoadAssetAtPath<GameObject>(CourtPrefabPath);
+            }
+            if (existing != null)
+            {
+                AssetDatabase.DeleteAsset(CourtPrefabPath);
+            }
+
+            GameObject sourceAsset = AssetDatabase.LoadAssetAtPath<GameObject>(
+                SourceCourtTemplatePath);
+            if (sourceAsset == null)
+            {
+                throw new InvalidOperationException(
+                    $"Missing CrowdEyes-Twin court extraction template at " +
+                    SourceCourtTemplatePath);
+            }
+
+            EnsureFolder(CourtRoot);
+            EnsureFolder(CourtMaterialRoot);
+            Material floor = CreateCourtMaterial(
+                "CourtFloor_URP",
+                CourtFloorTexturePath,
+                Color.white,
+                0.44f);
+            Material lines = CreateCourtMaterial(
+                "CourtLines_URP",
+                null,
+                new Color(0.96f, 0.97f, 1f, 1f),
+                0.2f);
+            Material structure = CreateCourtMaterial(
+                "Structure_URP",
+                null,
+                new Color(0.12f, 0.15f, 0.2f, 1f),
+                0.38f);
+            Material rim = CreateCourtMaterial(
+                "Rim_URP",
+                null,
+                new Color(0.95f, 0.24f, 0.035f, 1f),
+                0.48f);
+            Material redBoxMaterial = CreateCourtMaterial(
+                "BackboardTarget_URP",
+                null,
+                new Color(0.34f, 0.018f, 0.012f, 1f),
+                0.05f,
+                reflective: false);
+            Material padding = CreateCourtMaterial(
+                "Padding_URP",
+                null,
+                new Color(0.025f, 0.055f, 0.14f, 1f),
+                0.24f);
+            Material glass = CreateCourtMaterial(
+                "BackboardGlass_URP",
+                null,
+                new Color(0.78f, 0.9f, 1f, 0.42f),
+                0.72f,
+                true);
+
+            GameObject sourceRoot = PrefabUtility.LoadPrefabContents(SourceCourtTemplatePath);
+            GameObject root = new("Basketball Court");
+            try
+            {
+                Transform generated = sourceRoot.transform.Find(
+                    "Court & Geometry/Procedural Basketball Court/Generated Court");
+                if (generated == null)
+                {
+                    throw new InvalidOperationException(
+                        "CrowdEyes-Twin environment is missing its Generated Court subtree.");
+                }
+
+                GameObject geometry = Object.Instantiate(generated.gameObject);
+                geometry.name = "Geometry";
+                geometry.transform.SetParent(root.transform, false);
+                // CrowdEyes-Twin's generated court uses X as its longitudinal
+                // axis, while BasketballDemo and its team formations use Z.
+                // Rotate the extracted geometry once so team 0 really attacks
+                // +Z and all trajectory/three-point calculations share axes.
+                geometry.transform.SetLocalPositionAndRotation(
+                    Vector3.zero,
+                    Quaternion.Euler(0f, -90f, 0f));
+                geometry.transform.localScale = Vector3.one;
+                if (PrefabUtility.IsPartOfPrefabInstance(geometry))
+                {
+                    PrefabUtility.UnpackPrefabInstance(
+                        geometry,
+                        PrefabUnpackMode.Completely,
+                        InteractionMode.AutomatedAction);
+                }
+
+                foreach (Renderer renderer in root.GetComponentsInChildren<Renderer>(true))
+                {
+                    string objectName = renderer.gameObject.name;
+                    renderer.sharedMaterial = objectName switch
+                    {
+                        "Court Floor" => floor,
+                        "Court Markings" => lines,
+                        "Rim" => rim,
+                        "RedBox" => redBoxMaterial,
+                        "Backboard" => glass,
+                        "BoardPad" => padding,
+                        "Stanchion Base" => padding,
+                        _ => structure
+                    };
+                    renderer.shadowCastingMode = objectName == "Court Markings"
+                        ? ShadowCastingMode.Off
+                        : ShadowCastingMode.On;
+                    renderer.receiveShadows = objectName != "Court Markings";
+                }
+
+                Transform positiveBasket = geometry.transform.Find("Basket Positive Z");
+                Transform negativeBasket = geometry.transform.Find("Basket Negative Z");
+                if (positiveBasket == null || negativeBasket == null)
+                {
+                    throw new InvalidOperationException(
+                        "CrowdEyes-Twin court must contain both basket ends.");
+                }
+                BasketballHoop positiveHoop = ConfigureHoop(positiveBasket, 0);
+                BasketballHoop negativeHoop = ConfigureHoop(negativeBasket, 1);
+                BasketballCourt court = root.AddComponent<BasketballCourt>();
+                court.Configure(positiveHoop, negativeHoop);
+                CreateCourtBoundaries(root.transform, court);
+                root.AddComponent<BasketballScoreTracker>();
+
+                GameObject firstSave = PrefabUtility.SaveAsPrefabAsset(root, CourtPrefabPath);
+                if (firstSave == null)
+                {
+                    throw new InvalidOperationException(
+                        $"Failed to save court prefab at {CourtPrefabPath}.");
+                }
+
+                GameObject savedRoot = PrefabUtility.LoadPrefabContents(CourtPrefabPath);
+                try
+                {
+                    BasketballCourt savedCourt = savedRoot.GetComponent<BasketballCourt>();
+                    Transform savedGeometry = savedRoot.transform.Find("Geometry");
+                    BasketballHoop savedPositive = savedGeometry != null
+                        ? savedGeometry.Find("Basket Positive Z")
+                            ?.GetComponent<BasketballHoop>()
+                        : null;
+                    BasketballHoop savedNegative = savedGeometry != null
+                        ? savedGeometry.Find("Basket Negative Z")
+                            ?.GetComponent<BasketballHoop>()
+                        : null;
+                    if (savedCourt == null || savedPositive == null || savedNegative == null)
+                    {
+                        throw new InvalidOperationException(
+                            "Saved court prefab lost its Hoop components during extraction.");
+                    }
+                    savedCourt.Configure(savedPositive, savedNegative);
+                    PrefabUtility.SaveAsPrefabAsset(savedRoot, CourtPrefabPath);
+                }
+                finally
+                {
+                    PrefabUtility.UnloadPrefabContents(savedRoot);
+                }
+                return AssetDatabase.LoadAssetAtPath<GameObject>(CourtPrefabPath);
+            }
+            finally
+            {
+                PrefabUtility.UnloadPrefabContents(sourceRoot);
+                Object.DestroyImmediate(root);
+            }
+        }
+
+        private static BasketballHoop ConfigureHoop(Transform basket, int teamId)
+        {
+            Transform rim = basket.Find("Rim");
+            Transform backboard = basket.Find("Backboard");
+            if (rim == null || backboard == null)
+            {
+                throw new InvalidOperationException(
+                    $"{basket.name} is missing Rim or Backboard.");
+            }
+            BasketballHoop hoop = basket.gameObject.AddComponent<BasketballHoop>();
+            hoop.Configure(teamId, rim, backboard, 0.225f);
+            return hoop;
+        }
+
+        private static Material CreateCourtMaterial(
+            string name,
+            string texturePath,
+            Color color,
+            float smoothness,
+            bool transparent = false,
+            bool reflective = true)
+        {
+            EnsureFolder(CourtMaterialRoot);
+            string path = $"{CourtMaterialRoot}/{name}.mat";
+            Material material = AssetDatabase.LoadAssetAtPath<Material>(path);
+            Shader shader = Shader.Find("Universal Render Pipeline/Lit");
+            if (shader == null)
+            {
+                throw new InvalidOperationException(
+                    "Universal Render Pipeline/Lit shader is unavailable.");
+            }
+            if (material == null)
+            {
+                material = new Material(shader) { name = name };
+                AssetDatabase.CreateAsset(material, path);
+            }
+            else
+            {
+                material.shader = shader;
+            }
+
+            Texture2D texture = string.IsNullOrEmpty(texturePath)
+                ? null
+                : AssetDatabase.LoadAssetAtPath<Texture2D>(texturePath);
+            material.SetTexture("_BaseMap", texture);
+            material.SetColor("_BaseColor", color);
+            material.SetFloat("_Smoothness", smoothness);
+            material.SetFloat("_Metallic", 0f);
+            material.SetTexture("_EmissionMap", null);
+            material.SetColor("_EmissionColor", Color.black);
+            material.DisableKeyword("_EMISSION");
+            material.globalIlluminationFlags =
+                MaterialGlobalIlluminationFlags.EmissiveIsBlack;
+            material.SetFloat("_SpecularHighlights", reflective ? 1f : 0f);
+            material.SetFloat("_EnvironmentReflections", reflective ? 1f : 0f);
+            material.enableInstancing = true;
+            material.SetFloat("_Surface", transparent ? 1f : 0f);
+            material.SetFloat("_ZWrite", transparent ? 0f : 1f);
+            material.SetFloat("_SrcBlend", transparent
+                ? (float)BlendMode.SrcAlpha
+                : (float)BlendMode.One);
+            material.SetFloat("_DstBlend", transparent
+                ? (float)BlendMode.OneMinusSrcAlpha
+                : (float)BlendMode.Zero);
+            if (transparent)
+            {
+                material.EnableKeyword("_SURFACE_TYPE_TRANSPARENT");
+                material.renderQueue = (int)RenderQueue.Transparent;
+            }
+            else
+            {
+                material.DisableKeyword("_SURFACE_TYPE_TRANSPARENT");
+                material.renderQueue = -1;
+            }
+            EditorUtility.SetDirty(material);
+            return material;
+        }
+
+        private static void EnsurePrefabRendererMaterial(
+            string prefabPath,
+            string rendererObjectName,
+            Material material)
+        {
+            if (material == null || string.IsNullOrEmpty(prefabPath))
+            {
+                return;
+            }
+
+            GameObject prefabRoot = PrefabUtility.LoadPrefabContents(prefabPath);
+            bool changed = false;
+            try
+            {
+                foreach (Renderer renderer in
+                         prefabRoot.GetComponentsInChildren<Renderer>(true))
+                {
+                    if (renderer.gameObject.name != rendererObjectName ||
+                        renderer.sharedMaterial == material)
+                    {
+                        continue;
+                    }
+                    renderer.sharedMaterial = material;
+                    changed = true;
+                }
+                if (changed)
+                {
+                    PrefabUtility.SaveAsPrefabAsset(prefabRoot, prefabPath);
+                }
+            }
+            finally
+            {
+                PrefabUtility.UnloadPrefabContents(prefabRoot);
+            }
+        }
+
+        private static void EnsurePrefabCourtBoundaries(string prefabPath)
+        {
+            GameObject prefabRoot = PrefabUtility.LoadPrefabContents(prefabPath);
+            try
+            {
+                BasketballCourt court = prefabRoot.GetComponent<BasketballCourt>();
+                if (court == null)
+                {
+                    throw new InvalidOperationException(
+                        "Basketball Court prefab is missing BasketballCourt.");
+                }
+
+                Transform boundaryRoot = prefabRoot.transform.Find("Court Boundaries");
+                BasketballCourtBoundary boundary = boundaryRoot != null
+                    ? boundaryRoot.GetComponent<BasketballCourtBoundary>()
+                    : null;
+                bool complete = boundary != null &&
+                                boundaryRoot.Find("Baseline Positive") != null &&
+                                boundaryRoot.Find("Baseline Negative") != null &&
+                                boundaryRoot.Find("Sideline Positive") != null &&
+                                boundaryRoot.Find("Sideline Negative") != null;
+                if (!complete)
+                {
+                    boundary = CreateCourtBoundaries(prefabRoot.transform, court);
+                }
+                else
+                {
+                    boundary.RefreshColliders();
+                }
+                SetLayerRecursively(
+                    boundary.gameObject,
+                    0);
+
+                if (PrefabUtility.SaveAsPrefabAsset(prefabRoot, prefabPath) == null)
+                {
+                    throw new InvalidOperationException(
+                        $"Failed to update court boundaries at {prefabPath}.");
+                }
+            }
+            finally
+            {
+                PrefabUtility.UnloadPrefabContents(prefabRoot);
+            }
+        }
+
+        private static BasketballCourtBoundary CreateCourtBoundaries(
+            Transform courtRoot,
+            BasketballCourt court)
+        {
+            Transform existing = courtRoot.Find("Court Boundaries");
+            if (existing != null)
+            {
+                Object.DestroyImmediate(existing.gameObject);
+            }
+
+            GameObject boundaryRoot = new("Court Boundaries");
+            boundaryRoot.transform.SetParent(courtRoot, false);
+            boundaryRoot.layer = 0;
+
+            BoxCollider baselinePositive = CreateBoundaryWall(
+                boundaryRoot.transform,
+                "Baseline Positive");
+            BoxCollider baselineNegative = CreateBoundaryWall(
+                boundaryRoot.transform,
+                "Baseline Negative");
+            BoxCollider sidelinePositive = CreateBoundaryWall(
+                boundaryRoot.transform,
+                "Sideline Positive");
+            BoxCollider sidelineNegative = CreateBoundaryWall(
+                boundaryRoot.transform,
+                "Sideline Negative");
+
+            BasketballCourtBoundary boundary =
+                boundaryRoot.AddComponent<BasketballCourtBoundary>();
+            boundary.Configure(
+                court.CourtLength,
+                court.CourtWidth,
+                baselinePositive,
+                baselineNegative,
+                sidelinePositive,
+                sidelineNegative);
+            return boundary;
+        }
+
+        private static BoxCollider CreateBoundaryWall(
+            Transform parent,
+            string name)
+        {
+            GameObject wall = new(name);
+            wall.transform.SetParent(parent, false);
+            wall.layer = 0;
+            return wall.AddComponent<BoxCollider>();
+        }
+
+        private static BasketballCourt InstallCourt(Scene scene, GameObject courtPrefab)
+        {
+            BasketballCourt existing = Object.FindAnyObjectByType<BasketballCourt>(
+                FindObjectsInactive.Include);
+            if (existing != null && existing.gameObject.scene == scene)
+            {
+                Object.DestroyImmediate(existing.gameObject);
+            }
+
+            GameObject world = GameObject.Find("World");
+            if (world == null || world.scene != scene)
+            {
+                throw new InvalidOperationException("BasketballDemo requires a World root.");
+            }
+            DisableLegacyCourtPointLight(world.transform);
+            Transform oldGround = world.transform.Find("Ground");
+            if (oldGround != null)
+            {
+                Object.DestroyImmediate(oldGround.gameObject);
+            }
+
+            GameObject instance = PrefabUtility.InstantiatePrefab(
+                courtPrefab,
+                world.transform) as GameObject;
+            if (instance == null)
+            {
+                throw new InvalidOperationException("Could not instantiate Basketball Court.");
+            }
+            instance.name = "Basketball Court";
+            instance.transform.SetLocalPositionAndRotation(Vector3.zero, Quaternion.identity);
+            instance.transform.localScale = Vector3.one;
+            int groundLayer = LayerMask.NameToLayer("Ground");
+            SetLayerRecursively(instance, groundLayer >= 0 ? groundLayer : 0);
+            Transform boundaryRoot = instance.transform.Find("Court Boundaries");
+            if (boundaryRoot != null)
+            {
+                // Neural roots collide against Default + legacy environment.
+                // The camera explicitly ignores BasketballCourtBoundary walls.
+                SetLayerRecursively(
+                    boundaryRoot.gameObject,
+                    0);
+            }
+            return instance.GetComponent<BasketballCourt>();
+        }
+
+        private static void DisableLegacyCourtPointLight(Transform world)
+        {
+            Transform pointTransform = world.Find("Lights/Point");
+            Light pointLight = pointTransform != null
+                ? pointTransform.GetComponent<Light>()
+                : null;
+            if (pointLight == null || pointLight.type != LightType.Point ||
+                !pointLight.enabled)
+            {
+                return;
+            }
+
+            // The original demo's range-100 fill light creates a large circular
+            // overexposure on the remade court. The directional rig already
+            // provides the intended scene lighting.
+            pointLight.enabled = false;
+            EditorUtility.SetDirty(pointLight);
+        }
+
         private static BasketballTeamMember[] BuildPlayers(Scene scene, GameObject visualPrefab)
         {
-            List<BasketballTeamMember> players = Object
+            List<BasketballTeamMember> existingPlayers = Object
                 .FindObjectsByType<BasketballTeamMember>(
                     FindObjectsInactive.Include)
                 .Where(player => player.gameObject.scene == scene)
                 .OrderBy(player => player.PlayerIndex)
                 .ToList();
-            if (players.Count < 1)
+            if (existingPlayers.Count < 1)
             {
                 throw new InvalidOperationException("BasketballDemo has no canonical player rig to clone.");
             }
-            if (players.Count > PlayerCount)
+            if (existingPlayers.Count > PlayerCount)
             {
                 throw new InvalidOperationException(
-                    $"BasketballDemo already contains {players.Count} players; expected at most {PlayerCount}.");
+                    $"BasketballDemo already contains {existingPlayers.Count} players; expected at most {PlayerCount}.");
             }
 
-            GameObject template = players[0].gameObject;
-            while (players.Count < PlayerCount)
+            GameObject playerPrefab = BuildFullPlayerPrefab(
+                existingPlayers[0].gameObject,
+                visualPrefab);
+            GameObject teamsPrefab = BuildTeamsPrefab(playerPrefab);
+
+            // Saving either prefab can cause Unity to reload matching scene
+            // instances. Never retain Component references across that operation;
+            // rescan current scene roots after both assets are complete.
+            HashSet<GameObject> rootsToRemove = new();
+            foreach (GameObject root in scene.GetRootGameObjects())
             {
-                GameObject clone = Object.Instantiate(template);
-                clone.name = $"Player {players.Count + 1}";
-                SceneManager.MoveGameObjectToScene(clone, scene);
-                Undo.RegisterCreatedObjectUndo(clone, "Create 5v5 Basketball Player");
-                players.Add(clone.GetComponent<BasketballTeamMember>());
+                if (root.name == "Teams" ||
+                    root.GetComponentInChildren<BasketballTeamMember>(true) != null)
+                {
+                    rootsToRemove.Add(root);
+                }
+            }
+            foreach (GameObject root in rootsToRemove)
+            {
+                Undo.DestroyObjectImmediate(root);
             }
 
-            for (int index = 0; index < players.Count; index++)
+            GameObject teams = PrefabUtility.InstantiatePrefab(teamsPrefab) as GameObject;
+            if (teams == null)
             {
-                BasketballTeamMember player = players[index];
-                player.gameObject.name = $"Player {index + 1}";
-                int teamId = index < TeamSize ? 0 : 1;
-                Quaternion facing = teamId == 0
-                    ? Quaternion.identity
-                    : Quaternion.Euler(0f, 180f, 0f);
-                player.transform.SetPositionAndRotation(Formation[index], facing);
+                throw new InvalidOperationException(
+                    $"Could not instantiate team prefab at {TeamsPrefabPath}.");
+            }
+            teams.name = "Teams";
+            SceneManager.MoveGameObjectToScene(teams, scene);
+            Undo.RegisterCreatedObjectUndo(teams, "Install Basketball Teams Prefab");
 
+            BasketballTeamMember[] players = teams
+                .GetComponentsInChildren<BasketballTeamMember>(true)
+                .OrderBy(player => player.PlayerIndex)
+                .ToArray();
+            if (players.Length != PlayerCount)
+            {
+                throw new InvalidOperationException(
+                    $"Team prefab produced {players.Length} players; expected {PlayerCount}.");
+            }
+
+            return players;
+        }
+
+        private static GameObject BuildFullPlayerPrefab(
+            GameObject sceneTemplate,
+            GameObject visualPrefab)
+        {
+            GameObject root = Object.Instantiate(sceneTemplate);
+            root.name = "Basketball Player";
+            root.transform.SetParent(null);
+            root.transform.SetPositionAndRotation(Vector3.zero, Quaternion.identity);
+            try
+            {
+                BasketballTeamMember player = root.GetComponent<BasketballTeamMember>();
                 BasketballNeuralController controller =
-                    player.GetComponent<BasketballNeuralController>();
+                    root.GetComponent<BasketballNeuralController>();
                 BasketballKeyboardMouseInputProvider input =
-                    player.GetComponent<BasketballKeyboardMouseInputProvider>();
+                    root.GetComponent<BasketballKeyboardMouseInputProvider>();
                 BasketballDebugVisualizer visualizer =
-                    player.GetComponent<BasketballDebugVisualizer>();
+                    root.GetComponent<BasketballDebugVisualizer>();
                 BasketballTargetIndicator indicator =
-                    player.GetComponent<BasketballTargetIndicator>();
+                    root.GetComponent<BasketballTargetIndicator>();
+                BasketballReferenceRig rig = root.GetComponent<BasketballReferenceRig>();
+                if (player == null || controller == null || input == null || rig == null)
+                {
+                    throw new InvalidOperationException(
+                        "Canonical player template is missing its neural runtime components.");
+                }
+
                 player.Configure(
-                    index,
-                    teamId,
-                    index + 1,
+                    0,
+                    0,
+                    1,
                     controller,
                     input,
                     visualizer,
                     indicator);
 
                 BasketballHumanoidVisualRetargeter[] visuals =
-                    player.GetComponentsInChildren<BasketballHumanoidVisualRetargeter>(true);
+                    root.GetComponentsInChildren<BasketballHumanoidVisualRetargeter>(true);
                 for (int visualIndex = 1; visualIndex < visuals.Length; visualIndex++)
                 {
                     Object.DestroyImmediate(visuals[visualIndex].gameObject);
@@ -762,26 +1307,121 @@ namespace CrowdEyes.AI4Animation.Editor
                 {
                     GameObject visual = PrefabUtility.InstantiatePrefab(
                         visualPrefab,
-                        player.transform) as GameObject;
+                        root.transform) as GameObject;
                     if (visual == null)
                     {
                         throw new InvalidOperationException(
-                            $"Could not add visual prefab to Player {index + 1}.");
+                            "Could not add the CrowdEyes visual to the full player prefab.");
                     }
                     visual.name = "CrowdEyes Basketball Player Visual";
                     visual.transform.SetLocalPositionAndRotation(Vector3.zero, Quaternion.identity);
                     visual.transform.localScale = Vector3.one;
-                    SetLayerRecursively(visual, player.gameObject.layer);
+                    SetLayerRecursively(visual, root.layer);
                 }
+
+                BasketballPlayerBodyContact bodyContact =
+                    root.GetComponent<BasketballPlayerBodyContact>();
+                if (bodyContact == null)
+                {
+                    bodyContact = root.AddComponent<BasketballPlayerBodyContact>();
+                }
+                CapsuleCollider capsule = root.GetComponent<CapsuleCollider>();
+                capsule.direction = 1;
+                capsule.center = Vector3.up * 0.86f;
+                capsule.radius = 0.34f;
+                capsule.height = 1.72f;
+                capsule.isTrigger = false;
+                Rigidbody body = root.GetComponent<Rigidbody>();
+                body.isKinematic = true;
+                body.useGravity = false;
+                body.collisionDetectionMode = CollisionDetectionMode.ContinuousSpeculative;
+                body.constraints = RigidbodyConstraints.FreezeRotation;
+
+                // Scene references are intentionally assigned after the outer
+                // Teams prefab is installed.
+                SetObjectReference(rig, "ball", null);
+                SetObjectReference(controller, "movementCamera", null);
                 BasketballPlayerAppearance appearance =
-                    player.GetComponentInChildren<BasketballPlayerAppearance>(true);
+                    root.GetComponentInChildren<BasketballPlayerAppearance>(true);
                 appearance?.Apply();
-                EditorUtility.SetDirty(player);
+
+                GameObject prefab = PrefabUtility.SaveAsPrefabAsset(root, PlayerPrefabPath);
+                if (prefab == null)
+                {
+                    throw new InvalidOperationException(
+                        $"Failed to save full player prefab at {PlayerPrefabPath}.");
+                }
+                return prefab;
             }
-            return players.ToArray();
+            finally
+            {
+                Object.DestroyImmediate(root);
+            }
         }
 
-        private static void WireMatch(BasketballTeamMember[] players)
+        private static GameObject BuildTeamsPrefab(GameObject playerPrefab)
+        {
+            GameObject teams = new("Teams");
+            try
+            {
+                for (int teamId = 0; teamId < 2; teamId++)
+                {
+                    GameObject teamObject = new(teamId == 0 ? "Home" : "Away");
+                    teamObject.transform.SetParent(teams.transform, false);
+                    BasketballTeamGroup group = teamObject.AddComponent<BasketballTeamGroup>();
+                    group.Configure(teamId, teamId == 0 ? "Home" : "Away");
+
+                    for (int slot = 0; slot < TeamSize; slot++)
+                    {
+                        int index = teamId * TeamSize + slot;
+                        GameObject playerObject = PrefabUtility.InstantiatePrefab(
+                            playerPrefab,
+                            teamObject.transform) as GameObject;
+                        if (playerObject == null)
+                        {
+                            throw new InvalidOperationException(
+                                $"Could not create player prefab instance {index + 1}.");
+                        }
+                        playerObject.name = $"Player {index + 1}";
+                        Quaternion facing = teamId == 0
+                            ? Quaternion.identity
+                            : Quaternion.Euler(0f, 180f, 0f);
+                        playerObject.transform.SetLocalPositionAndRotation(
+                            Formation[index],
+                            facing);
+
+                        BasketballTeamMember player =
+                            playerObject.GetComponent<BasketballTeamMember>();
+                        player.Configure(
+                            index,
+                            teamId,
+                            index + 1,
+                            playerObject.GetComponent<BasketballNeuralController>(),
+                            playerObject.GetComponent<BasketballKeyboardMouseInputProvider>(),
+                            playerObject.GetComponent<BasketballDebugVisualizer>(),
+                            playerObject.GetComponent<BasketballTargetIndicator>());
+                        player.GetComponentInChildren<BasketballPlayerAppearance>(true)?.Apply();
+                        EditorUtility.SetDirty(player);
+                    }
+                }
+
+                GameObject prefab = PrefabUtility.SaveAsPrefabAsset(teams, TeamsPrefabPath);
+                if (prefab == null)
+                {
+                    throw new InvalidOperationException(
+                        $"Failed to save teams prefab at {TeamsPrefabPath}.");
+                }
+                return prefab;
+            }
+            finally
+            {
+                Object.DestroyImmediate(teams);
+            }
+        }
+
+        private static void WireMatch(
+            BasketballTeamMember[] players,
+            BasketballCourt court)
         {
             BasketballMatchController match =
                 Object.FindAnyObjectByType<BasketballMatchController>(FindObjectsInactive.Include);
@@ -795,8 +1435,115 @@ namespace CrowdEyes.AI4Animation.Editor
 
             SetObjectArray(match, "players", players);
             SetObjectArray(possession, "players", players);
+            possession.UpgradeStealTuningDefaults();
+            SetObjectReference(match, "court", court);
+            SetObjectReference(possession, "court", court);
+            BasketballBallController sharedBall =
+                Object.FindAnyObjectByType<BasketballBallController>(
+                    FindObjectsInactive.Include);
+            Camera movementCamera = Object.FindAnyObjectByType<Camera>(
+                FindObjectsInactive.Include);
+            for (int index = 0; index < players.Length; index++)
+            {
+                BasketballTeamMember player = players[index];
+                BasketballReferenceRig rig =
+                    player.GetComponent<BasketballReferenceRig>();
+                BasketballNeuralController controller = player.Controller != null
+                    ? player.Controller
+                    : player.GetComponent<BasketballNeuralController>();
+                SetObjectReference(rig, "ball", sharedBall);
+                SetObjectReference(controller, "movementCamera", movementCamera);
+                EditorUtility.SetDirty(rig);
+                EditorUtility.SetDirty(controller);
+            }
+            BasketballCourtBoundary courtBoundary = court != null
+                ? court.GetComponentInChildren<BasketballCourtBoundary>(true)
+                : null;
+            if (courtBoundary != null)
+            {
+                courtBoundary.SetBall(sharedBall);
+                courtBoundary.RefreshColliders();
+                EditorUtility.SetDirty(courtBoundary);
+            }
+            BasketballRuleBasedTeamAI teamAI =
+                match.GetComponent<BasketballRuleBasedTeamAI>();
+            if (teamAI == null)
+            {
+                teamAI = match.gameObject.AddComponent<BasketballRuleBasedTeamAI>();
+            }
+            teamAI.UpgradeTuningDefaults();
+            teamAI.Configure(players, possession, sharedBall, court);
+            SetObjectReference(match, "ruleBasedTeamAI", teamAI);
+            SetObjectReference(match, "decisionPolicyBehaviour", teamAI);
+            BasketballWorldEventStream worldEvents =
+                match.GetComponent<BasketballWorldEventStream>();
+            if (worldEvents == null)
+            {
+                worldEvents = match.gameObject.AddComponent<BasketballWorldEventStream>();
+            }
+            worldEvents.Configure();
+            SetObjectReference(match, "worldEventStream", worldEvents);
+            SetObjectReference(possession, "worldEventStream", worldEvents);
+            BasketballRulesManager rules =
+                match.GetComponent<BasketballRulesManager>();
+            if (rules == null)
+            {
+                rules = match.gameObject.AddComponent<BasketballRulesManager>();
+            }
+            rules.Configure(players, sharedBall, possession, court, worldEvents);
+            SetObjectReference(match, "rulesManager", rules);
+            BasketballRewardTracker rewards =
+                match.GetComponent<BasketballRewardTracker>();
+            if (rewards == null)
+            {
+                rewards = match.gameObject.AddComponent<BasketballRewardTracker>();
+            }
+            rewards.Configure(worldEvents, players);
+            SetObjectReference(match, "rewardTracker", rewards);
+            BasketballSkillTelemetryRecorder telemetry =
+                match.GetComponent<BasketballSkillTelemetryRecorder>();
+            if (telemetry == null)
+            {
+                telemetry =
+                    match.gameObject.AddComponent<BasketballSkillTelemetryRecorder>();
+            }
+            telemetry.Configure(worldEvents);
+            telemetry.SetRewardTracker(rewards);
+            SetObjectReference(match, "telemetryRecorder", telemetry);
+            BasketballScoreTracker score = court != null
+                ? court.GetComponent<BasketballScoreTracker>()
+                : null;
+            if (score != null)
+            {
+                score.Configure(
+                    court,
+                    sharedBall,
+                    possession);
+                EditorUtility.SetDirty(score);
+            }
             EditorUtility.SetDirty(match);
             EditorUtility.SetDirty(possession);
+            EditorUtility.SetDirty(teamAI);
+            EditorUtility.SetDirty(worldEvents);
+            EditorUtility.SetDirty(rules);
+            EditorUtility.SetDirty(rewards);
+            EditorUtility.SetDirty(telemetry);
+        }
+
+        private static void SetObjectReference(
+            Object target,
+            string propertyName,
+            Object value)
+        {
+            SerializedObject serialized = new(target);
+            SerializedProperty property = serialized.FindProperty(propertyName);
+            if (property == null)
+            {
+                throw new InvalidOperationException(
+                    $"{target.GetType().Name}.{propertyName} was not found.");
+            }
+            property.objectReferenceValue = value;
+            serialized.ApplyModifiedPropertiesWithoutUndo();
         }
 
         private static void SetObjectArray(

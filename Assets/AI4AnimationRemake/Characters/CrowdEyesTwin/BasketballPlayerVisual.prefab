@@ -322,6 +322,7 @@ GameObject:
   m_Component:
   - component: {fileID: 7686827924755032746}
   - component: {fileID: 5789522411330036167}
+  - component: {fileID: 8316303529221067754}
   - component: {fileID: 7899073928104495274}
   - component: {fileID: 4240124767953533601}
   m_Layer: 0
@@ -363,8 +364,32 @@ MonoBehaviour:
   scaleMultiplier: 1
   hipsWorldOffset: {x: 0, y: 0, z: 0}
   alignLimbsFromJointPositions: 1
-  wristRotationLimit: 42
   showCanonicalRigWhenVisualUnavailable: 1
+--- !u!114 &8316303529221067754
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 5390604878889424862}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: e5a15e1d1488c974e96e93b66cb9164f, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: CrowdEyes.AI4Animation.Runtime::CrowdEyes.AI4Animation.Basketball.BasketballHumanoidHandContactSolver
+  retargeter: {fileID: 5789522411330036167}
+  enableHandBallContact: 1
+  contactStart: 0.12
+  contactFull: 0.72
+  maximumBallDistance: 0.52
+  palmClearance: 0.008
+  palmCenterAlongMiddleFinger: 0.48
+  maximumWristCorrection: 0.24
+  maximumPalmRotationCorrection: 28
+  contactBlendSpeed: 9
+  applyRelaxedFingerPose: 1
+  relaxedFingerCurl: 6
+  contactFingerCurl: 12
 --- !u!114 &7899073928104495274
 MonoBehaviour:
   m_ObjectHideFlags: 0

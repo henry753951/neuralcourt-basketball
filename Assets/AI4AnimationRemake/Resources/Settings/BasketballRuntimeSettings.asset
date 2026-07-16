@@ -31,14 +31,29 @@ MonoBehaviour:
   zoomSensitivity: 0.015
   positionSmoothTime: 0.06
   distanceSmoothTime: 0.08
-  directPassApexClearance: 0.28
+  directPassApexClearance: 0.18
   lobPassApexClearance: 0.9
-  maximumDirectPassSpeed: 8
+  maximumDirectPassSpeed: 11.5
   maximumLobPassSpeed: 7
   maximumReceiverLeadDistance: 1.35
   receiverLeadScale: 0.9
   passReleaseBelowChestTolerance: 0.48
-  forcedPassReleaseSeconds: 0.84
+  passGatherSeconds: 0.08
+  passAlignSeconds: 0.16
+  passPushSeconds: 0.34
+  minimumPassReleaseSeconds: 0.3
+  forcedPassReleaseSeconds: 0.58
+  shotApexClearance: 1.05
+  shotDistanceApexScale: 0.035
+  maximumShotApexClearance: 2.1
+  maximumShotLaunchSpeed: 18
+  shotFacingDot: 0.9
+  maximumShotAlignSeconds: 0.22
+  shotCommandTimeoutSeconds: 1.4
+  minimumShotReleaseSeconds: 0.2
+  forcedShotReleaseSeconds: 0.58
+  minimumShotReleaseHeight: 1.25
+  naturalShotReleaseHandContact: 0.18
   cameraCollisionEnabled: 1
   cameraCollisionMask:
     serializedVersion: 2

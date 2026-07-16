@@ -8,22 +8,39 @@ namespace CrowdEyes.AI4Animation.Basketball
     {
         [SerializeField] private BasketballTeamMember[] players;
         [SerializeField] private BasketballBallController ball;
+        [SerializeField] private BasketballCourt court;
+        [SerializeField] private BasketballWorldEventStream worldEventStream;
         [SerializeField, Min(0.05f)] private float catchHandDistance = 0.36f;
         [SerializeField, Min(0.1f)] private float catchControlRadius = 1.25f;
         [SerializeField, Min(0.05f)] private float intendedReceiverCatchHandDistance = 0.52f;
         [SerializeField, Min(0.1f)] private float intendedReceiverControlRadius = 1.45f;
         [SerializeField, Min(0.05f)] private float intendedReceiverChestCatchRadius = 0.7f;
         [SerializeField, Min(0.1f)] private float maximumCatchRelativeSpeed = 14f;
-        [SerializeField, Min(0.05f)] private float stealHandDistance = 0.48f;
-        [SerializeField, Min(0.1f)] private float stealInteractionRadius = 1.7f;
-        [SerializeField, Range(0f, 1f)] private float stealQualityThreshold = 0.5f;
-        [SerializeField, Range(0f, 1f)] private float cleanStealQuality = 0.62f;
-        [SerializeField, Min(0.05f)] private float cleanStealHandDistance = 0.3f;
-        [SerializeField, Min(0.01f)] private float stealSecureDelay = 0.05f;
-        [SerializeField, Min(0.05f)] private float stealSecureWindow = 0.45f;
+        [SerializeField, Min(0f)] private float passCatchHandAssist = 0.12f;
+        [SerializeField, Min(0f)] private float passCatchControlAssist = 0.2f;
+        [SerializeField, Min(0f)] private float passCatchChestAssist = 0.15f;
+        [SerializeField, Min(0f)] private float passCatchSpeedAssist = 2f;
+        [SerializeField, Min(0.1f)] private float looseBallPickupRootRadius = 1.05f;
+        [SerializeField, Min(0.05f)] private float looseBallPickupMaximumHeight = 0.55f;
+        [SerializeField, Min(0.1f)] private float looseBallPickupMaximumSpeed = 3.5f;
+        [SerializeField, Min(0f)] private float minimumFlightSecureSeconds = 0.12f;
+        [SerializeField, Min(0f)] private float releasingPlayerCatchLockout = 0.45f;
+        [SerializeField, Min(0.05f)] private float stealHandDistance = 0.4f;
+        [SerializeField, Min(0.1f)] private float stealInteractionRadius = 1.45f;
+        [SerializeField, Range(0f, 1f)] private float minimumStealExposure = 0.28f;
+        [SerializeField, Range(0f, 1f)] private float minimumStealApproach = 0.12f;
+        [SerializeField, Range(0f, 1f)] private float stealQualityThreshold = 0.63f;
+        [SerializeField, Range(0f, 1f)] private float cleanStealQuality = 0.78f;
+        [SerializeField, Min(0.05f)] private float cleanStealHandDistance = 0.22f;
+        [SerializeField, Min(0.01f)] private float stealSecureDelay = 0.16f;
+        [SerializeField, Min(0.05f)] private float stealSecureWindow = 0.35f;
+        [SerializeField, Range(0f, 1f)] private float minimumStealSecureQuality = 0.68f;
+        [SerializeField, Min(0.05f)] private float stealSecureHandDistance = 0.28f;
+        [SerializeField, Min(0.1f)] private float maximumStealSecureRelativeSpeed = 6.5f;
         [SerializeField, Min(0.05f)] private float contestedTimeout = 0.8f;
-        [SerializeField, Min(0f)] private float possessionCooldown = 0.25f;
+        [SerializeField, Min(0f)] private float possessionCooldown = 0.65f;
         [SerializeField, Min(0.05f)] private float catchBlendSeconds = 0.18f;
+        [SerializeField, HideInInspector] private int interactionTuningVersion;
 
         private BasketballBallObservation[] observations;
         private float[] observationTimes;
@@ -32,11 +49,13 @@ namespace CrowdEyes.AI4Animation.Basketball
         private BasketballTeamMember passer;
         private BasketballTeamMember intendedReceiver;
         private BasketballPassPlan passPlan;
+        private BasketballShotPlan lastShotPlan;
         private float bestReleaseScore;
         private float bestReleaseDirectionError;
         private float bestReleaseSpeedScale;
         private float bestReleaseVerticalError;
         private float passStartedAt;
+        private float shotIntentStartedAt = float.NegativeInfinity;
         private float flightStartedAt;
         private float catchBlendStartedAt;
         private float contestStartedAt = float.NegativeInfinity;
@@ -48,6 +67,9 @@ namespace CrowdEyes.AI4Animation.Basketball
         private float stealTouchExpiresAt = float.NegativeInfinity;
         private Vector3 previousPhysicsBallPosition;
         private bool hasPreviousPhysicsBallPosition;
+        private bool currentShotScored;
+        private BasketballPossessionState flightOriginState =
+            BasketballPossessionState.Possessed;
         private bool initialized;
 
         private BasketballRuntimeSettings RuntimeSettings =>
@@ -58,6 +80,8 @@ namespace CrowdEyes.AI4Animation.Basketball
         public BasketballTeamMember Passer => passer;
         public BasketballTeamMember IntendedReceiver => intendedReceiver;
         public BasketballPassPlan CurrentPass => passPlan;
+        public BasketballShotPlan LastShotPlan => lastShotPlan;
+        public BasketballCourt Court => court;
         public BasketballPossessionState BallState { get; private set; }
         public BasketballBallControlMode BallControlMode { get; private set; }
         public int PossessionVersion { get; private set; }
@@ -70,6 +94,15 @@ namespace CrowdEyes.AI4Animation.Basketball
         public string LastPassFailureReason { get; private set; }
         public float LastBallExposureScore { get; private set; }
         public float LastStealContactQuality { get; private set; }
+        public bool IsShotReleasePending =>
+            BallState == BasketballPossessionState.Possessed && owner != null &&
+            !float.IsNegativeInfinity(shotIntentStartedAt);
+        public BasketballWorldEventStream WorldEvents => worldEventStream;
+
+        public void SetWorldEventStream(BasketballWorldEventStream eventStream)
+        {
+            worldEventStream = eventStream;
+        }
 
         private void Start()
         {
@@ -113,6 +146,8 @@ namespace CrowdEyes.AI4Animation.Basketball
                 case BasketballPossessionState.CatchBlend:
                     ResolveCatchBlend();
                     break;
+                case BasketballPossessionState.DeadBall:
+                    break;
             }
         }
 
@@ -137,7 +172,20 @@ namespace CrowdEyes.AI4Animation.Basketball
             }
 
             initialized = true;
-            SetOwner(players[0], reacquire: false);
+            BasketballTeamMember initialOwner = null;
+            for (int index = 0; index < players.Length; index++)
+            {
+                if (players[index] != null && players[index].IsOnCourt)
+                {
+                    initialOwner = players[index];
+                    break;
+                }
+            }
+            if (initialOwner == null)
+            {
+                return;
+            }
+            SetOwner(initialOwner, reacquire: false);
             BallState = BasketballPossessionState.Possessed;
             BallControlMode = BasketballBallControlMode.NeuralPossession;
             ball.SetState(BasketballBallAuthorityState.Controlled);
@@ -164,12 +212,141 @@ namespace CrowdEyes.AI4Animation.Basketball
                 BallState == BasketballPossessionState.PassFlight ||
                 BallState == BasketballPossessionState.Contested);
 
+        public bool ResetPossession(
+            BasketballTeamMember newOwner,
+            Vector3 controlledBallPosition,
+            Quaternion controlledBallRotation)
+        {
+            if (!initialized || newOwner == null || !newOwner.IsOnCourt ||
+                newOwner.Controller == null ||
+                FindPlayerIndex(newOwner.Controller) < 0)
+            {
+                return false;
+            }
+
+            SetOwner(null, reacquire: false);
+            passer = null;
+            intendedReceiver = null;
+            passPlan = default;
+            lastShotPlan = default;
+            currentShotScored = false;
+            flightOriginState = BasketballPossessionState.Possessed;
+            bestReleaseScore = 0f;
+            contestStartedAt = float.NegativeInfinity;
+            passStartedAt = float.NegativeInfinity;
+            shotIntentStartedAt = float.NegativeInfinity;
+            flightStartedAt = float.NegativeInfinity;
+            catchBlendStartedAt = float.NegativeInfinity;
+            ClearStealTouchCandidate();
+            ball.SetState(BasketballBallAuthorityState.Controlled);
+            ball.SetControlledPose(
+                controlledBallPosition,
+                controlledBallRotation,
+                Vector3.zero);
+
+            // A made-basket restart is an explicit simulation reset point. Seed
+            // every recurrent ball history with the same authoritative pose so
+            // no old shot velocity leaks into the next possession.
+            for (int playerIndex = 0; playerIndex < players.Length; playerIndex++)
+            {
+                BasketballAgentState state = players[playerIndex]?.Controller?.State;
+                if (state == null)
+                {
+                    continue;
+                }
+                for (int sample = 0; sample < BasketballAgentState.SampleCount; sample++)
+                {
+                    state.BallPositions[sample] = controlledBallPosition;
+                    state.BallRotations[sample] = controlledBallRotation;
+                    state.BallVelocities[sample] = Vector3.zero;
+                }
+            }
+
+            SetOwner(newOwner, reacquire: false);
+            BallState = BasketballPossessionState.Possessed;
+            BallControlMode = BasketballBallControlMode.NeuralPossession;
+            hasPreviousPhysicsBallPosition = false;
+            UpdateInteractionTargets();
+            return true;
+        }
+
+        public bool BeginDeadBall(Vector3 controlledBallPosition, Quaternion controlledBallRotation)
+        {
+            if (!initialized || ball == null)
+            {
+                return false;
+            }
+
+            SetOwner(null, reacquire: false);
+            passer = null;
+            intendedReceiver = null;
+            passPlan = default;
+            lastShotPlan = default;
+            currentShotScored = false;
+            bestReleaseScore = 0f;
+            passStartedAt = float.NegativeInfinity;
+            flightStartedAt = float.NegativeInfinity;
+            catchBlendStartedAt = float.NegativeInfinity;
+            contestStartedAt = float.NegativeInfinity;
+            ClearStealTouchCandidate();
+            BallState = BasketballPossessionState.DeadBall;
+            BallControlMode = BasketballBallControlMode.DeadBall;
+            hasPreviousPhysicsBallPosition = false;
+            ball.SetState(BasketballBallAuthorityState.Controlled);
+            ball.SetControlledPose(
+                controlledBallPosition,
+                controlledBallRotation,
+                Vector3.zero);
+            UpdateInteractionTargets();
+            return true;
+        }
+
+        public bool ReconcileActiveRoster(BasketballTeamMember fallbackOwner)
+        {
+            if (!initialized || fallbackOwner == null || !fallbackOwner.IsOnCourt ||
+                fallbackOwner.Controller?.State == null)
+            {
+                return false;
+            }
+
+            if (owner == null || !owner.IsOnCourt)
+            {
+                BasketballAgentState state = fallbackOwner.Controller.State;
+                Vector3 forward = state.ActorRootRotation * Vector3.forward;
+                Vector3 controlledPosition = fallbackOwner.AimPoint + 0.16f * forward;
+                return ResetPossession(
+                    fallbackOwner,
+                    controlledPosition,
+                    ball.transform.rotation);
+            }
+
+            if (intendedReceiver != null && !intendedReceiver.IsOnCourt)
+            {
+                if (BallState == BasketballPossessionState.PassPreparing)
+                {
+                    FailPassPreparation();
+                }
+                else
+                {
+                    intendedReceiver = null;
+                    passPlan.Receiver = null;
+                }
+            }
+            if (stealTouchCandidate != null && !stealTouchCandidate.IsOnCourt)
+            {
+                ClearStealTouchCandidate();
+            }
+            UpdateInteractionTargets();
+            return true;
+        }
+
         public bool RequestPass(
             BasketballTeamMember requestPasser,
             BasketballTeamMember receiver,
             BasketballPassType passType = BasketballPassType.Lead)
         {
             if (!initialized || requestPasser == null || receiver == null ||
+                !requestPasser.IsOnCourt || !receiver.IsOnCourt ||
                 owner != requestPasser || requestPasser == receiver ||
                 requestPasser.TeamId != receiver.TeamId ||
                 BallState != BasketballPossessionState.Possessed)
@@ -199,6 +376,16 @@ namespace CrowdEyes.AI4Animation.Basketball
             LastPassFailureReason = null;
             BallState = BasketballPossessionState.PassPreparing;
             BallControlMode = BasketballBallControlMode.NeuralPassPreparation;
+            worldEventStream?.Publish(
+                BasketballWorldEventType.PassRequested,
+                PossessionVersion,
+                requestPasser,
+                receiver,
+                ball.transform.position,
+                passPlan.DesiredReleaseVelocity,
+                value: passPlan.ExpectedFlightTime,
+                targetPosition: passPlan.PredictedCatchPoint,
+                skillVariant: (int)passType);
             return true;
         }
 
@@ -215,16 +402,20 @@ namespace CrowdEyes.AI4Animation.Basketball
             }
 
             float elapsed = Time.time - passStartedAt;
+            BasketballRuntimeSettings settings = RuntimeSettings;
+            float gatherEnd = settings != null ? settings.PassGatherSeconds : 0.08f;
+            float alignEnd = settings != null ? settings.PassAlignSeconds : 0.16f;
+            float pushEnd = settings != null ? settings.PassPushSeconds : 0.34f;
             BasketballMLPassPhase phase;
-            if (elapsed < 0.16f)
+            if (elapsed < gatherEnd)
             {
                 phase = BasketballMLPassPhase.Gather;
             }
-            else if (elapsed < 0.3f)
+            else if (elapsed < alignEnd)
             {
                 phase = BasketballMLPassPhase.Align;
             }
-            else if (elapsed < 0.56f)
+            else if (elapsed < pushEnd)
             {
                 phase = BasketballMLPassPhase.Push;
             }
@@ -251,7 +442,7 @@ namespace CrowdEyes.AI4Animation.Basketball
                     shoot = 0f;
                     break;
                 case BasketballMLPassPhase.Push:
-                    float push = Mathf.InverseLerp(0.3f, 0.56f, elapsed);
+                    float push = Mathf.InverseLerp(alignEnd, pushEnd, elapsed);
                     hold = Mathf.Lerp(0.8f, 0.3f, push);
                     shoot = 0f;
                     break;
@@ -279,6 +470,15 @@ namespace CrowdEyes.AI4Animation.Basketball
             FailPassPreparation();
         }
 
+        public void NotifyShotScored()
+        {
+            if (BallState == BasketballPossessionState.ShotFlight &&
+                lastShotPlan.Shooter != null)
+            {
+                currentShotScored = true;
+            }
+        }
+
         public void ReportNeuralTick(
             BasketballNeuralController player,
             in BasketballBallObservation observation)
@@ -300,11 +500,47 @@ namespace CrowdEyes.AI4Animation.Basketball
             {
                 EvaluatePassRelease(observation);
             }
-            else if (BallState == BasketballPossessionState.Possessed &&
-                     observation.ShootIntent &&
-                     observation.Position.y > 1.5f &&
-                     observation.HandContact < 0.1f &&
-                     observation.Velocity.magnitude < observation.PreviousVelocity.magnitude)
+            else if (BallState == BasketballPossessionState.Possessed)
+            {
+                EvaluateShotRelease(observation);
+            }
+        }
+
+        private void EvaluateShotRelease(in BasketballBallObservation observation)
+        {
+            if (!observation.ShootIntent &&
+                float.IsNegativeInfinity(shotIntentStartedAt))
+            {
+                return;
+            }
+            if (float.IsNegativeInfinity(shotIntentStartedAt))
+            {
+                shotIntentStartedAt = Time.time;
+            }
+
+            BasketballRuntimeSettings settings = RuntimeSettings;
+            float elapsed = Time.time - shotIntentStartedAt;
+            float minimumSeconds = settings != null
+                ? settings.MinimumShotReleaseSeconds
+                : 0.2f;
+            float forcedSeconds = settings != null
+                ? settings.ForcedShotReleaseSeconds
+                : 0.58f;
+            float minimumHeight = settings != null
+                ? settings.MinimumShotReleaseHeight
+                : 1.25f;
+            float contactThreshold = settings != null
+                ? settings.NaturalShotReleaseHandContact
+                : 0.18f;
+            float heightAboveCourt = court != null
+                ? Vector3.Dot(
+                    observation.Position - court.CourtCenter,
+                    court.CourtUp)
+                : observation.Position.y;
+            bool naturalRelease = elapsed >= minimumSeconds &&
+                                  heightAboveCourt >= minimumHeight &&
+                                  observation.HandContact <= contactThreshold;
+            if (naturalRelease || elapsed >= forcedSeconds)
             {
                 ReleaseShot(observation);
             }
@@ -318,7 +554,11 @@ namespace CrowdEyes.AI4Animation.Basketball
             }
 
             float elapsed = Time.time - passStartedAt;
-            if (elapsed < 0.2f)
+            BasketballRuntimeSettings settings = RuntimeSettings;
+            float minimumReleaseSeconds = settings != null
+                ? settings.MinimumPassReleaseSeconds
+                : 0.3f;
+            if (elapsed < minimumReleaseSeconds)
             {
                 return;
             }
@@ -362,7 +602,6 @@ namespace CrowdEyes.AI4Animation.Basketball
             float chestY = passerState != null
                 ? passerState.BonePositions[14].y
                 : observation.RootPosition.y + 1.2f;
-            BasketballRuntimeSettings settings = RuntimeSettings;
             float belowChestTolerance = settings != null
                 ? settings.PassReleaseBelowChestTolerance
                 : 0.48f;
@@ -371,7 +610,7 @@ namespace CrowdEyes.AI4Animation.Basketball
                 : 0.84f;
             bool releaseHeightReady = observation.Position.y >=
                                       chestY - belowChestTolerance;
-            bool releaseReady = elapsed >= 0.52f &&
+            bool releaseReady = elapsed >= minimumReleaseSeconds &&
                                 ((facingAlignment >= 0.35f && releaseHeightReady) ||
                                  elapsed >= forcedReleaseSeconds);
             if (!releaseReady)
@@ -396,6 +635,7 @@ namespace CrowdEyes.AI4Animation.Basketball
             SetOwner(null, reacquire: false);
             passer = releasingPlayer;
             BallState = BasketballPossessionState.PassFlight;
+            flightOriginState = BasketballPossessionState.PassFlight;
             BallControlMode = BasketballBallControlMode.PhysicsFlight;
             flightStartedAt = Time.time;
             contestStartedAt = float.NegativeInfinity;
@@ -406,16 +646,44 @@ namespace CrowdEyes.AI4Animation.Basketball
                 ball.transform.rotation,
                 releaseVelocity,
                 Vector3.zero);
+            worldEventStream?.Publish(
+                BasketballWorldEventType.PassReleased,
+                PossessionVersion,
+                releasingPlayer,
+                intendedReceiver,
+                observation.Position,
+                releaseVelocity,
+                value: passPlan.ExpectedFlightTime,
+                targetPosition: passPlan.PredictedCatchPoint,
+                skillVariant: (int)passPlan.PassType);
         }
 
         private void ReleaseShot(in BasketballBallObservation observation)
         {
             BasketballTeamMember releasingPlayer = owner;
+            Vector3 releaseVelocity = observation.Velocity;
+            if (BasketballShotPlanner.TryCreate(
+                    releasingPlayer,
+                    court,
+                    observation.Position,
+                    observation.Velocity,
+                    RuntimeSettings,
+                    out BasketballShotPlan plannedShot))
+            {
+                lastShotPlan = plannedShot;
+                releaseVelocity = plannedShot.DesiredVelocity;
+            }
+            else
+            {
+                lastShotPlan = default;
+            }
+            currentShotScored = false;
             SetOwner(null, reacquire: false);
             passer = releasingPlayer;
             intendedReceiver = null;
             passPlan = default;
             BallState = BasketballPossessionState.ShotFlight;
+            flightOriginState = BasketballPossessionState.ShotFlight;
             BallControlMode = BasketballBallControlMode.PhysicsFlight;
             flightStartedAt = Time.time;
             contestStartedAt = float.NegativeInfinity;
@@ -423,8 +691,16 @@ namespace CrowdEyes.AI4Animation.Basketball
             ball.ReleaseFromPose(
                 observation.Position,
                 ball.transform.rotation,
-                observation.Velocity,
+                releaseVelocity,
                 Vector3.zero);
+            worldEventStream?.Publish(
+                BasketballWorldEventType.ShotReleased,
+                PossessionVersion,
+                releasingPlayer,
+                position: observation.Position,
+                velocity: releaseVelocity,
+                value: lastShotPlan.Distance,
+                targetPosition: lastShotPlan.TargetPoint);
         }
 
         private void ResolvePassPreparationTimeout()
@@ -437,6 +713,10 @@ namespace CrowdEyes.AI4Animation.Basketball
 
         private void FailPassPreparation(bool reportModelFailure = false)
         {
+            BasketballTeamMember failedPasser = passer;
+            BasketballTeamMember failedReceiver = intendedReceiver;
+            BasketballPassPlan failedPlan = passPlan;
+            float failedScore = bestReleaseScore;
             if (reportModelFailure)
             {
                 LastReleaseCandidateScore = bestReleaseScore;
@@ -457,6 +737,15 @@ namespace CrowdEyes.AI4Animation.Basketball
             bestReleaseScore = 0f;
             BallState = BasketballPossessionState.Possessed;
             BallControlMode = BasketballBallControlMode.NeuralPossession;
+            worldEventStream?.Publish(
+                BasketballWorldEventType.PassPreparationFailed,
+                PossessionVersion,
+                failedPasser,
+                failedReceiver,
+                ball.transform.position,
+                value: failedScore,
+                targetPosition: failedPlan.PredictedCatchPoint,
+                skillVariant: (int)failedPlan.PassType);
         }
 
         private void ResolvePhysicsBall()
@@ -469,6 +758,9 @@ namespace CrowdEyes.AI4Animation.Basketball
             BasketballTeamMember best = null;
             float bestQuality = 0f;
             float secondQuality = 0f;
+            float bestHandDistance = float.PositiveInfinity;
+            float bestControlDistance = float.PositiveInfinity;
+            float bestRelativeSpeed = float.PositiveInfinity;
             Vector3 currentBallPosition = ball.transform.position;
             Vector3 previousBallPosition = hasPreviousPhysicsBallPosition
                 ? previousPhysicsBallPosition
@@ -477,6 +769,10 @@ namespace CrowdEyes.AI4Animation.Basketball
             hasPreviousPhysicsBallPosition = true;
             for (int index = 0; index < players.Length; index++)
             {
+                if (players[index] == null || !players[index].IsOnCourt)
+                {
+                    continue;
+                }
                 if (!HasFreshObservation(index))
                 {
                     continue;
@@ -486,7 +782,41 @@ namespace CrowdEyes.AI4Animation.Basketball
                     observations[index],
                     ball.transform.position,
                     ball.Velocity);
-                if (!observation.CatchIntent && !observation.StealIntent)
+                float rootDistance = Vector3.Distance(
+                    observation.RootPosition,
+                    ball.transform.position);
+                float sweptRootDistance = DistanceToSegment(
+                    observation.RootPosition,
+                    previousBallPosition,
+                    currentBallPosition);
+                float relativeSpeed = (ball.Velocity -
+                    observation.ClosestHandVelocity).magnitude;
+                float heightAboveCourt = court != null
+                    ? Vector3.Dot(
+                        currentBallPosition - court.CourtCenter,
+                        court.CourtUp)
+                    : currentBallPosition.y;
+                bool loosePickupWindow = BallState == BasketballPossessionState.Loose &&
+                                         rootDistance <= looseBallPickupRootRadius &&
+                                         heightAboveCourt <=
+                                             ball.Radius + looseBallPickupMaximumHeight &&
+                                         ball.Velocity.magnitude <=
+                                             looseBallPickupMaximumSpeed;
+                if (!observation.CatchIntent &&
+                    !observation.StealIntent)
+                {
+                    continue;
+                }
+
+                float flightAge = Time.time - flightStartedAt;
+                bool activeFlight = BallState == BasketballPossessionState.PassFlight ||
+                                    BallState == BasketballPossessionState.ShotFlight;
+                if (activeFlight && flightAge < minimumFlightSecureSeconds)
+                {
+                    continue;
+                }
+                if (activeFlight && players[index] == previousOwner &&
+                    flightAge < releasingPlayerCatchLockout)
                 {
                     continue;
                 }
@@ -505,11 +835,11 @@ namespace CrowdEyes.AI4Animation.Basketball
                             observation.RightHandPosition,
                             previousBallPosition,
                             currentBallPosition)));
-                float rootDistance = Vector3.Distance(
-                    observation.RootPosition,
-                    ball.transform.position);
-                float relativeSpeed = (ball.Velocity -
-                    observation.ClosestHandVelocity).magnitude;
+                bool loosePickup = loosePickupWindow &&
+                                   observation.CatchIntent &&
+                                   handDistance <= Mathf.Min(
+                                       catchHandDistance,
+                                       stealSecureHandDistance);
                 bool isIntendedReceiver = players[index] == intendedReceiver &&
                                           (BallState == BasketballPossessionState.PassFlight ||
                                            BallState == BasketballPossessionState.Contested);
@@ -526,27 +856,36 @@ namespace CrowdEyes.AI4Animation.Basketball
                 bool intendedBodyCatch = isIntendedReceiver &&
                                           observation.CatchIntent &&
                                           Time.time - flightStartedAt >= 0.08f &&
-                                          chestDistance <= intendedReceiverChestCatchRadius &&
+                                          chestDistance <=
+                                              intendedReceiverChestCatchRadius +
+                                              passCatchChestAssist &&
                                           (Vector3.Distance(
                                                chestPosition,
                                                currentBallPosition) <= 0.24f ||
                                            incomingAlignment >= 0.05f);
                 float allowedHandDistance = isIntendedReceiver
-                    ? intendedReceiverCatchHandDistance
+                    ? intendedReceiverCatchHandDistance + passCatchHandAssist
                     : catchHandDistance;
                 float allowedControlRadius = isIntendedReceiver
-                    ? intendedReceiverControlRadius
+                    ? intendedReceiverControlRadius + passCatchControlAssist
                     : catchControlRadius;
-                if ((!intendedBodyCatch && handDistance > allowedHandDistance) ||
-                    rootDistance > allowedControlRadius ||
-                    relativeSpeed > maximumCatchRelativeSpeed)
+                float allowedRelativeSpeed = maximumCatchRelativeSpeed +
+                    (isIntendedReceiver ? passCatchSpeedAssist : 0f);
+                float controlDistance = isIntendedReceiver
+                    ? Mathf.Min(rootDistance, sweptRootDistance)
+                    : rootDistance;
+                if ((!intendedBodyCatch &&
+                     !loosePickup &&
+                     handDistance > allowedHandDistance) ||
+                    controlDistance > allowedControlRadius ||
+                    relativeSpeed > allowedRelativeSpeed)
                 {
                     continue;
                 }
 
                 float quality =
                     0.55f * (1f - handDistance / allowedHandDistance) +
-                    0.2f * (1f - relativeSpeed / maximumCatchRelativeSpeed) +
+                    0.2f * (1f - relativeSpeed / allowedRelativeSpeed) +
                     0.15f * observation.HandContact;
                 if (isIntendedReceiver)
                 {
@@ -554,8 +893,10 @@ namespace CrowdEyes.AI4Animation.Basketball
                 }
                 if (intendedBodyCatch)
                 {
+                    float assistedChestRadius = intendedReceiverChestCatchRadius +
+                                                passCatchChestAssist;
                     float chestProximity = 1f -
-                        chestDistance / intendedReceiverChestCatchRadius;
+                        chestDistance / assistedChestRadius;
                     float approachQuality = Mathf.InverseLerp(
                         0.05f,
                         0.85f,
@@ -563,6 +904,14 @@ namespace CrowdEyes.AI4Animation.Basketball
                     quality = Mathf.Max(
                         quality,
                         0.38f + 0.35f * chestProximity + 0.12f * approachQuality);
+                }
+                if (loosePickup)
+                {
+                    float rootProximity = 1f -
+                        rootDistance / looseBallPickupRootRadius;
+                    quality = Mathf.Max(
+                        quality,
+                        0.44f + 0.18f * Mathf.Clamp01(rootProximity));
                 }
                 if (players[index] == stealTouchCandidate)
                 {
@@ -574,6 +923,9 @@ namespace CrowdEyes.AI4Animation.Basketball
                     secondQuality = bestQuality;
                     bestQuality = quality;
                     best = players[index];
+                    bestHandDistance = handDistance;
+                    bestControlDistance = controlDistance;
+                    bestRelativeSpeed = relativeSpeed;
                 }
                 else if (quality > secondQuality)
                 {
@@ -584,13 +936,22 @@ namespace CrowdEyes.AI4Animation.Basketball
             bool intendedPassCatch = best == intendedReceiver &&
                                      (BallState == BasketballPossessionState.PassFlight ||
                                       BallState == BasketballPossessionState.Contested);
-            float requiredSecureQuality = best == stealTouchCandidate || intendedPassCatch
-                ? 0.34f
-                : 0.42f;
+            float requiredSecureQuality = best == stealTouchCandidate
+                ? 0.52f
+                : intendedPassCatch ? 0.34f : 0.42f;
             if (best != null && bestQuality >= requiredSecureQuality)
             {
-                if (stealTouchCandidate != null &&
+                bool securingStealTouch = best == stealTouchCandidate;
+                if (securingStealTouch &&
                     Time.time - stealTouchStartedAt < stealSecureDelay)
+                {
+                    return;
+                }
+                if (securingStealTouch &&
+                    (bestQuality < minimumStealSecureQuality ||
+                     bestHandDistance > stealSecureHandDistance ||
+                     bestControlDistance > Mathf.Min(catchControlRadius, 0.9f) ||
+                     bestRelativeSpeed > maximumStealSecureRelativeSpeed))
                 {
                     return;
                 }
@@ -599,12 +960,33 @@ namespace CrowdEyes.AI4Animation.Basketball
                     if (BallState != BasketballPossessionState.Contested)
                     {
                         contestStartedAt = Time.time;
+                        worldEventStream?.Publish(
+                            BasketballWorldEventType.BallContested,
+                            PossessionVersion,
+                            best,
+                            intendedReceiver,
+                            ball.transform.position,
+                            ball.Velocity,
+                            bestQuality);
                     }
                     BallState = BasketballPossessionState.Contested;
                     BallControlMode = BasketballBallControlMode.PhysicsContested;
                     return;
                 }
-                CompleteCatch(best);
+                if (best == stealTouchCandidate)
+                {
+                    CompleteContactSteal(
+                        best,
+                        previousOwner,
+                        ball.transform.position,
+                        ball.transform.rotation,
+                        ball.Velocity,
+                        bestQuality);
+                }
+                else
+                {
+                    CompleteCatch(best);
+                }
                 return;
             }
 
@@ -631,7 +1013,8 @@ namespace CrowdEyes.AI4Animation.Basketball
         {
             LastBallExposureScore = 0f;
             LastStealContactQuality = 0f;
-            if (owner == null || Time.time - lastStealTouchTime < possessionCooldown)
+            if (owner == null || IsShotReleasePending ||
+                Time.time - lastStealTouchTime < possessionCooldown)
             {
                 return;
             }
@@ -650,7 +1033,8 @@ namespace CrowdEyes.AI4Animation.Basketball
             for (int index = 0; index < players.Length; index++)
             {
                 BasketballTeamMember defender = players[index];
-                if (defender == owner || defender.TeamId == owner.TeamId ||
+                if (defender == null || !defender.IsOnCourt || defender == owner ||
+                    defender.TeamId == owner.TeamId ||
                     !HasFreshObservation(index))
                 {
                     continue;
@@ -676,6 +1060,22 @@ namespace CrowdEyes.AI4Animation.Basketball
                     continue;
                 }
 
+                Vector3 closestHand = Vector3.SqrMagnitude(
+                    defenderObservation.LeftHandPosition - ownerObservation.Position) <=
+                    Vector3.SqrMagnitude(
+                        defenderObservation.RightHandPosition - ownerObservation.Position)
+                    ? defenderObservation.LeftHandPosition
+                    : defenderObservation.RightHandPosition;
+                if (owner.BodyContact != null && owner.BodyContact.OccludesHandPath(
+                        owner.Controller.State,
+                        closestHand,
+                        ownerObservation.Position))
+                {
+                    // A hand that reaches the ball only by crossing the carrier's
+                    // torso is not a legal steal touch.
+                    continue;
+                }
+
                 float exposure = BasketballBallExposureEvaluator.Evaluate(
                     owner.Controller.State,
                     ownerObservation,
@@ -696,8 +1096,12 @@ namespace CrowdEyes.AI4Animation.Basketball
                 // Exposure opens the window, but a real hand-ball touch must be
                 // able to knock the ball loose even when the carrier is holding it.
                 // Holding changes Loose to Contested below; it does not erase touch.
+                if (exposure < minimumStealExposure || approach < minimumStealApproach)
+                {
+                    continue;
+                }
                 float quality = Mathf.Clamp01(
-                    0.25f * exposure + 0.6f * proximity + 0.15f * approach);
+                    0.35f * exposure + 0.35f * proximity + 0.3f * approach);
                 LastBallExposureScore = Mathf.Max(LastBallExposureScore, exposure);
                 LastStealContactQuality = Mathf.Max(LastStealContactQuality, quality);
                 if (quality >= stealQualityThreshold)
@@ -720,36 +1124,38 @@ namespace CrowdEyes.AI4Animation.Basketball
             float contactQuality,
             float handDistance)
         {
-            Vector3 away = controlledBall.Position - defender.RootPosition;
+            BasketballTeamMember dispossessedOwner = owner;
+            Vector3 realPosition = ball.transform.position;
+            Quaternion realRotation = ball.transform.rotation;
+            Vector3 realVelocity = ball.Velocity;
+            Vector3 away = realPosition - defender.RootPosition;
             away.y = 0f;
             away = away.sqrMagnitude > 1e-8f ? away.normalized : defender.RootForward;
             bool cleanTouch = contactQuality >= cleanStealQuality &&
                               handDistance <= cleanStealHandDistance;
-            Vector3 velocity;
+
+            // A clean hand-ball contact changes authority at the ball's current
+            // world pose. The defender has already been running the original
+            // Hold response against this same ball, so no CatchBlend suction is
+            // necessary and no Transform is moved toward the defender.
             if (cleanTouch)
             {
-                Vector3 towardDefender = defender.RootPosition - controlledBall.Position;
-                towardDefender.y = 0f;
-                towardDefender = towardDefender.sqrMagnitude > 1e-8f
-                    ? towardDefender.normalized
-                    : -away;
-                velocity = Vector3.Lerp(
-                               controlledBall.Velocity,
-                               defender.ClosestHandVelocity,
-                               0.45f) +
-                           0.55f * towardDefender +
-                           0.12f * Vector3.up;
-                velocity = Vector3.ClampMagnitude(velocity, 5.5f);
+                CompleteContactSteal(
+                    defenderMember,
+                    dispossessedOwner,
+                    realPosition,
+                    realRotation,
+                    realVelocity,
+                    contactQuality);
+                return;
             }
-            else
-            {
-                velocity = controlledBall.Velocity +
-                           0.3f * defender.ClosestHandVelocity +
-                           1.35f * away +
-                           0.25f * Vector3.up;
-                velocity = Vector3.ClampMagnitude(velocity, 6.5f);
-            }
-            bool contested = cleanTouch || controlledBall.HandContact > 0.35f;
+
+            Vector3 velocity = realVelocity +
+                               0.3f * defender.ClosestHandVelocity +
+                               1.35f * away +
+                               0.25f * Vector3.up;
+            velocity = Vector3.ClampMagnitude(velocity, 6.5f);
+            bool contested = controlledBall.HandContact > 0.35f;
 
             SetOwner(null, reacquire: false);
             stealTouchCandidate = defenderMember;
@@ -761,31 +1167,142 @@ namespace CrowdEyes.AI4Animation.Basketball
             BallState = contested
                 ? BasketballPossessionState.Contested
                 : BasketballPossessionState.Loose;
+            flightOriginState = BasketballPossessionState.Loose;
             BallControlMode = contested
                 ? BasketballBallControlMode.PhysicsContested
                 : BasketballBallControlMode.PhysicsFlight;
             lastStealTouchTime = Time.time;
             flightStartedAt = Time.time;
             contestStartedAt = contested ? Time.time : float.NegativeInfinity;
-            BeginPhysicsTracking(controlledBall.Position);
+            BeginPhysicsTracking(realPosition);
             ball.ReleaseFromPose(
-                controlledBall.Position,
-                ball.transform.rotation,
+                realPosition,
+                realRotation,
                 velocity,
                 Vector3.zero);
+            worldEventStream?.Publish(
+                BasketballWorldEventType.StealTouch,
+                PossessionVersion,
+                defenderMember,
+                dispossessedOwner,
+                realPosition,
+                velocity,
+                contactQuality);
+            worldEventStream?.Publish(
+                contested
+                    ? BasketballWorldEventType.BallContested
+                    : BasketballWorldEventType.BallLoose,
+                PossessionVersion,
+                defenderMember,
+                dispossessedOwner,
+                realPosition,
+                velocity,
+                contactQuality);
+        }
+
+        private void CompleteContactSteal(
+            BasketballTeamMember defender,
+            BasketballTeamMember dispossessedOwner,
+            Vector3 position,
+            Quaternion rotation,
+            Vector3 velocity,
+            float contactQuality)
+        {
+            SetOwner(defender, reacquire: false);
+            passer = null;
+            intendedReceiver = null;
+            passPlan = default;
+            BallState = BasketballPossessionState.Possessed;
+            BallControlMode = BasketballBallControlMode.NeuralPossession;
+            flightOriginState = BasketballPossessionState.Possessed;
+            contestStartedAt = float.NegativeInfinity;
+            hasPreviousPhysicsBallPosition = false;
+            lastStealTouchTime = Time.time;
+            ball.SetState(BasketballBallAuthorityState.Controlled);
+            ball.SetControlledPose(position, rotation, velocity);
+            ball.BeginControlledHandoff(defender.Controller.CurrentIntent.Hold);
+            worldEventStream?.Publish(
+                BasketballWorldEventType.StealTouch,
+                PossessionVersion,
+                defender,
+                dispossessedOwner,
+                position,
+                velocity,
+                contactQuality);
+            worldEventStream?.Publish(
+                BasketballWorldEventType.BallSecured,
+                PossessionVersion,
+                defender,
+                dispossessedOwner,
+                position,
+                velocity,
+                contactQuality);
         }
 
         private void CompleteCatch(BasketballTeamMember receiver)
         {
-            SetOwner(receiver, reacquire: true);
+            BasketballTeamMember completedPasser = passer;
+            BasketballTeamMember expectedReceiver = intendedReceiver;
+            BasketballTeamMember oldOwner = previousOwner;
+            BasketballPassPlan completedPassPlan = passPlan;
+            bool securedStealTouch = receiver == stealTouchCandidate;
+            bool useCatchBlend = BallState == BasketballPossessionState.PassFlight ||
+                                 BallState == BasketballPossessionState.ShotFlight ||
+                                 BallState == BasketballPossessionState.Contested &&
+                                 flightOriginState != BasketballPossessionState.Loose;
+            Vector3 securedPosition = ball.transform.position;
+            Quaternion securedRotation = ball.transform.rotation;
+            Vector3 securedVelocity = ball.Velocity;
+            SetOwner(receiver, reacquire: useCatchBlend);
             passer = null;
-            BallState = BasketballPossessionState.CatchBlend;
-            BallControlMode = BasketballBallControlMode.CatchBlend;
-            catchBlendStartedAt = Time.time;
+            if (useCatchBlend)
+            {
+                BallState = BasketballPossessionState.CatchBlend;
+                BallControlMode = BasketballBallControlMode.CatchBlend;
+                catchBlendStartedAt = Time.time;
+            }
+            else
+            {
+                BallState = BasketballPossessionState.Possessed;
+                BallControlMode = BasketballBallControlMode.NeuralPossession;
+                ball.SetState(BasketballBallAuthorityState.Controlled);
+                ball.SetControlledPose(
+                    securedPosition,
+                    securedRotation,
+                    securedVelocity);
+                ball.BeginControlledHandoff(receiver.Controller.CurrentIntent.Hold);
+            }
             intendedReceiver = null;
             passPlan = default;
             contestStartedAt = float.NegativeInfinity;
             hasPreviousPhysicsBallPosition = false;
+            BasketballWorldEventType resultType;
+            BasketballTeamMember resultTarget;
+            if (flightOriginState == BasketballPossessionState.PassFlight &&
+                completedPasser != null)
+            {
+                bool intendedCatch = receiver == expectedReceiver;
+                resultType = intendedCatch
+                    ? BasketballWorldEventType.PassCaught
+                    : BasketballWorldEventType.PassIntercepted;
+                resultTarget = intendedCatch ? completedPasser : expectedReceiver;
+            }
+            else
+            {
+                resultType = BasketballWorldEventType.BallSecured;
+                resultTarget = securedStealTouch ? oldOwner : null;
+            }
+            worldEventStream?.Publish(
+                resultType,
+                PossessionVersion,
+                receiver,
+                resultTarget,
+                ball.transform.position,
+                ball.Velocity,
+                value: Time.time - flightStartedAt,
+                targetPosition: completedPassPlan.PredictedCatchPoint,
+                skillVariant: (int)completedPassPlan.PassType);
+            flightOriginState = BasketballPossessionState.Possessed;
         }
 
         private void ResolveCatchBlend()
@@ -807,6 +1324,11 @@ namespace CrowdEyes.AI4Animation.Basketball
 
         private void MarkLoose()
         {
+            BasketballPossessionState originState = flightOriginState;
+            BasketballTeamMember failedPasser = passer;
+            BasketballTeamMember failedReceiver = intendedReceiver;
+            BasketballPassPlan failedPassPlan = passPlan;
+            BasketballTeamMember shooter = lastShotPlan.Shooter;
             if (owner != null)
             {
                 SetOwner(null, reacquire: false);
@@ -818,6 +1340,39 @@ namespace CrowdEyes.AI4Animation.Basketball
             ClearStealTouchCandidate();
             BallState = BasketballPossessionState.Loose;
             BallControlMode = BasketballBallControlMode.PhysicsFlight;
+            flightOriginState = BasketballPossessionState.Loose;
+            if (originState == BasketballPossessionState.PassFlight)
+            {
+                worldEventStream?.Publish(
+                    BasketballWorldEventType.PassFailed,
+                    PossessionVersion,
+                    failedPasser,
+                    failedReceiver,
+                    ball.transform.position,
+                    ball.Velocity,
+                    value: Time.time - flightStartedAt,
+                    targetPosition: failedPassPlan.PredictedCatchPoint,
+                    skillVariant: (int)failedPassPlan.PassType);
+            }
+            else if (originState == BasketballPossessionState.ShotFlight &&
+                     !currentShotScored)
+            {
+                worldEventStream?.Publish(
+                    BasketballWorldEventType.ShotMissed,
+                    PossessionVersion,
+                    shooter,
+                    position: ball.transform.position,
+                    velocity: ball.Velocity,
+                    value: Time.time - flightStartedAt,
+                    targetPosition: lastShotPlan.TargetPoint);
+            }
+            worldEventStream?.Publish(
+                BasketballWorldEventType.BallLoose,
+                PossessionVersion,
+                failedPasser,
+                failedReceiver,
+                ball.transform.position,
+                ball.Velocity);
         }
 
         private void UpdatePossessedBallMode()
@@ -843,6 +1398,7 @@ namespace CrowdEyes.AI4Animation.Basketball
             }
             previousOwner = owner;
             owner = value;
+            shotIntentStartedAt = float.NegativeInfinity;
             ClearStealTouchCandidate();
             PossessionVersion++;
             lastPossessionChangeTime = Time.time;
@@ -854,6 +1410,13 @@ namespace CrowdEyes.AI4Animation.Basketball
             {
                 ball.BeginReacquire();
             }
+            worldEventStream?.Publish(
+                BasketballWorldEventType.PossessionChanged,
+                PossessionVersion,
+                owner,
+                previousOwner,
+                ball != null ? ball.transform.position : Vector3.zero,
+                ball != null ? ball.Velocity : Vector3.zero);
         }
 
         private void ClearStealTouchCandidate()
@@ -909,6 +1472,11 @@ namespace CrowdEyes.AI4Animation.Basketball
             for (int index = 0; index < players.Length; index++)
             {
                 BasketballTeamMember member = players[index];
+                if (member == null || !member.IsOnCourt)
+                {
+                    member?.Controller?.SetRival(null);
+                    continue;
+                }
                 BasketballTeamMember rival = null;
                 if (owner != null && member == owner)
                 {
@@ -916,7 +1484,8 @@ namespace CrowdEyes.AI4Animation.Basketball
                     for (int candidateIndex = 0; candidateIndex < players.Length; candidateIndex++)
                     {
                         BasketballTeamMember candidate = players[candidateIndex];
-                        if (candidate == null || candidate.TeamId == owner.TeamId ||
+                        if (candidate == null || !candidate.IsOnCourt ||
+                            candidate.TeamId == owner.TeamId ||
                             !candidate.Controller.CurrentIntent.Steal)
                         {
                             continue;
@@ -1001,6 +1570,25 @@ namespace CrowdEyes.AI4Animation.Basketball
         }
 
 #if UNITY_EDITOR
+        public void UpgradeStealTuningDefaults()
+        {
+            if (interactionTuningVersion >= 1)
+            {
+                return;
+            }
+            stealHandDistance = 0.4f;
+            stealInteractionRadius = 1.45f;
+            minimumStealExposure = 0.28f;
+            minimumStealApproach = 0.12f;
+            stealQualityThreshold = 0.63f;
+            cleanStealQuality = 0.78f;
+            cleanStealHandDistance = 0.22f;
+            stealSecureDelay = 0.16f;
+            stealSecureWindow = 0.35f;
+            possessionCooldown = 0.65f;
+            interactionTuningVersion = 1;
+        }
+
         public void Configure(
             BasketballTeamMember[] teamMembers,
             BasketballBallController sharedBall)

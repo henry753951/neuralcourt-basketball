@@ -31,6 +31,7 @@ namespace CrowdEyes.AI4Animation.Basketball
         private BasketballPoseApplicator poseApplicator;
         private BasketballTwistCorrector twistCorrector;
         private BasketballRootCollisionResolver collisionResolver;
+        private BasketballPlayerBodyContact playerBodyContact;
         private BasketballLegacyContactIK contactIK;
         private ThirdPersonOrbitCamera orbitCamera;
         private BasketballIntent intent;
@@ -132,6 +133,7 @@ namespace CrowdEyes.AI4Animation.Basketball
             collisionResolver = new BasketballRootCollisionResolver(
                 capsule != null ? capsule.radius : 0.25f,
                 collisionMask);
+            playerBodyContact = GetComponent<BasketballPlayerBodyContact>();
             previousPose.Capture(state);
             currentPose.Capture(state);
             poseApplicator = new BasketballPoseApplicator(transform, rig.Skeleton, rig.Ball);
@@ -141,6 +143,49 @@ namespace CrowdEyes.AI4Animation.Basketball
                 ? movementCamera.GetComponent<ThirdPersonOrbitCamera>()
                 : null;
             initialized = true;
+        }
+
+        /// <summary>
+        /// Re-seeds this agent's closed-loop simulation at a deterministic root
+        /// pose. The shared GPU model and scheduler stay alive; only per-agent
+        /// recurrent state and post-processing caches are reset.
+        /// </summary>
+        public bool ResetSimulationPose(Vector3 rootPosition, Quaternion rootRotation)
+        {
+            Initialize();
+            if (!initialized || state == null || rig == null || rig.Ball == null)
+            {
+                return false;
+            }
+
+            transform.SetPositionAndRotation(rootPosition, rootRotation);
+            Array.Clear(input, 0, input.Length);
+            Array.Clear(output, 0, output.Length);
+            Array.Clear(externalGatingWeights, 0, externalGatingWeights.Length);
+            state.Initialize(transform, rig.Skeleton, rig.Ball);
+
+            intent = default;
+            intentOverride = true;
+            reacquireTicksRemaining = 0;
+            passTarget = null;
+            passTargetOffset = Vector3.zero;
+            externalInterpolationAlpha = 1f;
+
+            // Contact locks and collision/twist helpers contain pose-relative
+            // caches. Rebuilding them prevents old-world anchors from pulling a
+            // newly teleported character back toward its previous formation.
+            twistCorrector = new BasketballTwistCorrector();
+            CapsuleCollider capsule = GetComponent<CapsuleCollider>();
+            collisionResolver = new BasketballRootCollisionResolver(
+                capsule != null ? capsule.radius : 0.25f,
+                collisionMask);
+            playerBodyContact = GetComponent<BasketballPlayerBodyContact>();
+            contactIK = new BasketballLegacyContactIK(transform, rig.Skeleton);
+
+            previousPose.Capture(state);
+            currentPose.Capture(state);
+            poseApplicator.ApplySimulationState(state);
+            return true;
         }
 
         internal void SetRuntimeSettings(BasketballRuntimeSettings value)
@@ -230,7 +275,8 @@ namespace CrowdEyes.AI4Animation.Basketball
             // The SIGGRAPH 2020 controller corrects single-child bone twist
             // unconditionally, before any optional contact IK pass.
             twistCorrector.Correct(state);
-            collisionResolver.Resolve(state);
+            collisionResolver.ResolveAfterDecode(state);
+            playerBodyContact?.ResolveAfterDecode(state);
             ProcessBallAfterDecode();
             possessionAuthority?.ReportNeuralTick(this, BuildBallObservation());
             if (rig.EnableContactIK)
@@ -270,6 +316,11 @@ namespace CrowdEyes.AI4Animation.Basketball
                 return;
             }
 
+            if (state.Carrier == value)
+            {
+                return;
+            }
+
             state.Carrier = value;
             reacquireTicksRemaining = 0;
             if (value)
@@ -291,9 +342,9 @@ namespace CrowdEyes.AI4Animation.Basketball
                 {
                     rig.Ball.SetState(BasketballBallAuthorityState.Controlled);
                 }
+                previousPose.CaptureBall(state);
+                currentPose.CaptureBall(state);
             }
-            previousPose.Capture(state);
-            currentPose.Capture(state);
         }
 
         public void SetPassTarget(Transform target, Vector3 localOffset)
@@ -338,9 +389,21 @@ namespace CrowdEyes.AI4Animation.Basketball
                 state.ShiftControlSeries();
                 int pivot = BasketballAgentState.Pivot;
                 ProcessBallBeforeControl(pivot);
-                bool stand = intent.Move.magnitude < 0.25f;
+                bool hasWorldMove = intent.UseWorldMove &&
+                                    Vector3.ProjectOnPlane(
+                                        intent.WorldMove,
+                                        Vector3.up).magnitude >= 0.25f;
+                bool stand = hasWorldMove
+                    ? false
+                    : intent.Move.magnitude < 0.25f;
                 bool passControl = state.Carrier && intent.PassControl;
-                bool virtualStealHold = !state.Carrier && intent.Steal;
+                float stealHandDistance = !state.Carrier && intent.Steal
+                    ? Mathf.Min(
+                        Vector3.Distance(state.BonePositions[18], state.BallPositions[pivot]),
+                        Vector3.Distance(state.BonePositions[25], state.BallPositions[pivot]))
+                    : float.PositiveInfinity;
+                bool virtualStealHold = !state.Carrier && intent.Steal &&
+                                        stealHandDistance <= 0.65f;
                 bool directHold = intent.Hold || virtualStealHold;
                 bool catchReadyStyle = !state.Carrier && intent.CatchReady;
                 bool modelHoldStyle = directHold || catchReadyStyle;
@@ -436,12 +499,15 @@ namespace CrowdEyes.AI4Animation.Basketball
                     !intent.IsGamepad && orbitCamera != null && orbitCamera.enabled;
                 Vector3 moveInput = new(intent.Move.x, 0f, intent.Move.y);
                 Vector3 move;
+                Vector3 orbitFacing = Vector3.zero;
+                bool useOrbitFacing = false;
                 bool useWorldControl = intent.UseWorldMove || intent.UseWorldFacing;
+                Vector3 worldMoveInput = intent.UseWorldMove
+                    ? Vector3.ProjectOnPlane(intent.WorldMove, Vector3.up)
+                    : Vector3.zero;
                 if (useWorldControl)
                 {
-                    Vector3 desiredWorldMove = intent.UseWorldMove
-                        ? Vector3.ProjectOnPlane(intent.WorldMove, Vector3.up)
-                        : Vector3.zero;
+                    Vector3 desiredWorldMove = worldMoveInput;
                     Vector3 desiredFacing = intent.UseWorldFacing
                         ? Vector3.ProjectOnPlane(intent.WorldFacing, Vector3.up)
                         : desiredWorldMove;
@@ -466,11 +532,22 @@ namespace CrowdEyes.AI4Animation.Basketball
                         desiredWorldMove = Quaternion.AngleAxis(
                             60f * manualTurn, Vector3.up) * desiredWorldMove;
                     }
-                    if (moveActive && desiredWorldMove.sqrMagnitude > 1e-10f)
+                    orbitFacing = intent.Sprint && moveActive &&
+                                  desiredWorldMove.sqrMagnitude > 1e-10f
+                        ? desiredWorldMove.normalized
+                        : cameraDirection;
+                    if (!intent.Sprint && manualTurn != 0f)
+                    {
+                        orbitFacing = Quaternion.AngleAxis(
+                            60f * manualTurn,
+                            Vector3.up) * orbitFacing;
+                    }
+                    useOrbitFacing = orbitFacing.sqrMagnitude > 1e-10f;
+                    if (useOrbitFacing)
                     {
                         Vector3 actorForward = state.ActorRootRotation * Vector3.forward;
                         float headingError = Vector3.SignedAngle(
-                            actorForward, desiredWorldMove, Vector3.up);
+                            actorForward, orbitFacing, Vector3.up);
                         turn = ShapeTurn(Mathf.Clamp(headingError / 90f, -1f, 1f));
                     }
                     move = BasketballMath.RelativeDirection(
@@ -481,7 +558,12 @@ namespace CrowdEyes.AI4Animation.Basketball
                     move = cameraRotation * moveInput;
                 }
                 move = Vector3.ClampMagnitude(move, 1f) * WalkFactor;
-                if (moveActive && intent.Sprint && intent.Move.y > 0.25f)
+                bool sprintMoveActive = useWorldControl
+                    ? worldMoveInput.magnitude > 0.25f
+                    : useOrbitAutoTurn
+                        ? moveInput.magnitude > 0.25f
+                        : intent.Move.y > 0.25f;
+                if (moveActive && intent.Sprint && sprintMoveActive)
                 {
                     move *= SprintFactor;
                 }
@@ -554,6 +636,14 @@ namespace CrowdEyes.AI4Animation.Basketball
                         state.RootRotations[sample] = Quaternion.Slerp(
                             state.RootRotations[sample],
                             Quaternion.LookRotation(facing.normalized, Vector3.up),
+                            BasketballMath.GetControl(sample, 0.5f, 0.1f, 1f));
+                    }
+                    else if (useOrbitFacing)
+                    {
+                        state.RootRotations[sample] = Quaternion.Slerp(
+                            state.RootRotations[sample],
+                            Quaternion.LookRotation(orbitFacing, Vector3.up),
+                            Mathf.Abs(turn) *
                             BasketballMath.GetControl(sample, 0.5f, 0.1f, 1f));
                     }
                     else if (moveActive && move.sqrMagnitude > 0f && turn != 0f)
@@ -692,16 +782,14 @@ namespace CrowdEyes.AI4Animation.Basketball
             {
                 if (!state.Carrier)
                 {
-                    if (intent.Steal)
-                    {
-                        UpdateStealProxyBall(pivot);
-                    }
-                    else
-                    {
-                        state.BallPositions[pivot] = rig.Ball.transform.position;
-                        state.BallRotations[pivot] = rig.Ball.transform.rotation;
-                        state.BallVelocities[pivot] = rig.Ball.Velocity;
-                    }
+                    // Every non-owner observes the one real shared ball. In
+                    // particular, a steal attempt must not invent a reachable
+                    // proxy near the defender: that makes the learned Hold
+                    // response reach one location while possession resolves at
+                    // another, producing the visible snap on ownership change.
+                    state.BallPositions[pivot] = rig.Ball.transform.position;
+                    state.BallRotations[pivot] = rig.Ball.transform.rotation;
+                    state.BallVelocities[pivot] = rig.Ball.Velocity;
 
                     if (possessionAuthority == null && intent.Hold)
                     {
@@ -729,27 +817,6 @@ namespace CrowdEyes.AI4Animation.Basketball
                     }
                 }
             }
-        }
-
-        private void UpdateStealProxyBall(int pivot)
-        {
-            // This proxy exists only in this non-owner agent's recurrent model state.
-            // It is never rendered and never gains authority over the shared Rigidbody.
-            Vector3 realPosition = rig.Ball.transform.position;
-            Vector3 chest = state.BonePositions[14];
-            Vector3 toBall = realPosition - chest;
-            const float maximumReach = 0.72f;
-            Vector3 proxyPosition = toBall.sqrMagnitude > maximumReach * maximumReach
-                ? chest + maximumReach * toBall.normalized
-                : realPosition;
-            proxyPosition.y = Mathf.Clamp(
-                proxyPosition.y,
-                state.ActorRootPosition.y + 0.35f,
-                state.ActorRootPosition.y + 1.75f);
-
-            state.BallPositions[pivot] = proxyPosition;
-            state.BallRotations[pivot] = rig.Ball.transform.rotation;
-            state.BallVelocities[pivot] = Vector3.ClampMagnitude(rig.Ball.Velocity, 4.5f);
         }
 
         private Vector3 CalculatePassVelocity(Vector3 origin)

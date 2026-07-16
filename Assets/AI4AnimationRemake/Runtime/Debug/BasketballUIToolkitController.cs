@@ -3,6 +3,13 @@ using UnityEngine.UIElements;
 
 namespace CrowdEyes.AI4Animation.Basketball
 {
+    public enum BasketballHudViewMode
+    {
+        Debug,
+        Gameplay,
+        FreeCamera
+    }
+
     [DisallowMultipleComponent]
     [RequireComponent(typeof(UIDocument))]
     public sealed class BasketballUIToolkitController : MonoBehaviour
@@ -36,6 +43,9 @@ namespace CrowdEyes.AI4Animation.Basketball
 
         private UIDocument document;
         private VisualElement root;
+        private VisualElement debugHud;
+        private VisualElement gameplayHud;
+        private VisualElement freeCameraHud;
         private VisualElement telemetryCard;
         private VisualElement expertCard;
         private VisualElement performanceCard;
@@ -47,6 +57,8 @@ namespace CrowdEyes.AI4Animation.Basketball
         private Label tickLabel;
         private Label controlState;
         private Label modeLabel;
+        private Label gameplayModeLabel;
+        private Label freeCameraModeLabel;
         private Label fpsLabel;
         private Label frameTimeLabel;
         private Label mainThreadLabel;
@@ -71,6 +83,8 @@ namespace CrowdEyes.AI4Animation.Basketball
         private string lastModeText;
         private string lastBackendText;
         private bool isBound;
+        private BasketballHudViewMode hudViewMode = BasketballHudViewMode.Debug;
+        private BasketballHudViewMode modeBeforeFreeCamera = BasketballHudViewMode.Debug;
 
         public bool IsBound => isBound;
         public VisualElement Root => root;
@@ -135,13 +149,14 @@ namespace CrowdEyes.AI4Animation.Basketball
             float controlDiskInterval = settings != null
                 ? settings.ControlDiskRefreshInterval
                 : 1f / 30f;
-            if (controlDiskRefreshTimer >= controlDiskInterval)
+            if (hudViewMode == BasketballHudViewMode.Debug &&
+                controlDiskRefreshTimer >= controlDiskInterval)
             {
                 controlDiskRefreshTimer = 0f;
                 controlDisk.MarkDirtyRepaint();
             }
 
-            if (!telemetryVisible)
+            if (!telemetryVisible || hudViewMode != BasketballHudViewMode.Debug)
             {
                 return;
             }
@@ -186,6 +201,9 @@ namespace CrowdEyes.AI4Animation.Basketball
                 root.styleSheets.Add(styleSheet);
             }
 
+            debugHud = root.Q<VisualElement>("debug-hud");
+            gameplayHud = root.Q<VisualElement>("gameplay-hud");
+            freeCameraHud = root.Q<VisualElement>("freecam-hud");
             telemetryCard = root.Q<VisualElement>("telemetry-card");
             expertCard = root.Q<VisualElement>("expert-card");
             performanceCard = root.Q<VisualElement>("performance-card");
@@ -197,6 +215,8 @@ namespace CrowdEyes.AI4Animation.Basketball
             tickLabel = root.Q<Label>("tick-label");
             controlState = root.Q<Label>("control-state");
             modeLabel = root.Q<Label>("mode-label");
+            gameplayModeLabel = root.Q<Label>("gameplay-mode-label");
+            freeCameraModeLabel = root.Q<Label>("freecam-mode-label");
             fpsLabel = root.Q<Label>("fps-label");
             frameTimeLabel = root.Q<Label>("frame-time-label");
             mainThreadLabel = root.Q<Label>("main-thread-label");
@@ -210,7 +230,8 @@ namespace CrowdEyes.AI4Animation.Basketball
             neuralRateLabel = root.Q<Label>("neural-rate-label");
             backendLabel = root.Q<Label>("backend-label");
 
-            if (telemetryCard == null || expertCard == null || performanceCard == null ||
+            if (debugHud == null || gameplayHud == null || freeCameraHud == null ||
+                telemetryCard == null || expertCard == null || performanceCard == null ||
                 controlCard == null ||
                 controlDisk == null || hudToggle == null || debugToggle == null ||
                 ballState == null || tickLabel == null || controlState == null ||
@@ -219,7 +240,9 @@ namespace CrowdEyes.AI4Animation.Basketball
                 sentisLatencyLabel == null ||
                 neuralPipelineLabel == null || animationLabel == null ||
                 cameraCpuLabel == null ||
-                neuralRateLabel == null || backendLabel == null)
+                neuralRateLabel == null || backendLabel == null ||
+                modeLabel == null || gameplayModeLabel == null ||
+                freeCameraModeLabel == null)
             {
                 return;
             }
@@ -284,10 +307,21 @@ namespace CrowdEyes.AI4Animation.Basketball
 
         private void ApplyVisibility()
         {
-            DisplayStyle display = telemetryVisible ? DisplayStyle.Flex : DisplayStyle.None;
-            telemetryCard.style.display = display;
-            expertCard.style.display = display;
-            performanceCard.style.display = display;
+            bool debugVisible = hudViewMode == BasketballHudViewMode.Debug;
+            debugHud.style.display = debugVisible ? DisplayStyle.Flex : DisplayStyle.None;
+            gameplayHud.style.display = hudViewMode == BasketballHudViewMode.Gameplay
+                ? DisplayStyle.Flex
+                : DisplayStyle.None;
+            freeCameraHud.style.display = hudViewMode == BasketballHudViewMode.FreeCamera
+                ? DisplayStyle.Flex
+                : DisplayStyle.None;
+            DisplayStyle telemetryDisplay = debugVisible && telemetryVisible
+                ? DisplayStyle.Flex
+                : DisplayStyle.None;
+            telemetryCard.style.display = telemetryDisplay;
+            expertCard.style.display = telemetryDisplay;
+            performanceCard.style.display = telemetryDisplay;
+            controlCard.style.display = debugVisible ? DisplayStyle.Flex : DisplayStyle.None;
             hudToggle.EnableInClassList("is-active", telemetryVisible);
             debugToggle.EnableInClassList(
                 "is-active", visualizer != null && visualizer.ShowDebugLines);
@@ -295,7 +329,8 @@ namespace CrowdEyes.AI4Animation.Basketball
 
         private void RefreshTelemetry()
         {
-            if (!telemetryVisible || !isBound || controller == null || !controller.IsInitialized)
+            if (!telemetryVisible || hudViewMode != BasketballHudViewMode.Debug ||
+                !isBound || controller == null || !controller.IsInitialized)
             {
                 return;
             }
@@ -353,7 +388,7 @@ namespace CrowdEyes.AI4Animation.Basketball
 
         private void RefreshPerformance()
         {
-            if (!telemetryVisible || !isBound)
+            if (!telemetryVisible || hudViewMode != BasketballHudViewMode.Debug || !isBound)
             {
                 return;
             }
@@ -580,16 +615,73 @@ namespace CrowdEyes.AI4Animation.Basketball
                     : -1);
             if (isBound)
             {
-                controlDisk.MarkDirtyRepaint();
+                if (hudViewMode == BasketballHudViewMode.Debug)
+                {
+                    controlDisk.MarkDirtyRepaint();
+                }
+                ApplyVisibility();
+            }
+        }
+
+        public void TogglePrimaryHud()
+        {
+            if (hudViewMode == BasketballHudViewMode.FreeCamera)
+            {
+                return;
+            }
+            hudViewMode = hudViewMode == BasketballHudViewMode.Debug
+                ? BasketballHudViewMode.Gameplay
+                : BasketballHudViewMode.Debug;
+            if (!isBound)
+            {
+                return;
+            }
+            ApplyVisibility();
+            if (hudViewMode == BasketballHudViewMode.Debug)
+            {
+                refreshTimer = 0f;
+                performanceRefreshTimer = 0f;
+                RefreshTelemetry();
+                RefreshPerformance();
+            }
+        }
+
+        public void SetFreeCameraMode(bool enabled)
+        {
+            if (enabled)
+            {
+                if (hudViewMode != BasketballHudViewMode.FreeCamera)
+                {
+                    modeBeforeFreeCamera = hudViewMode;
+                }
+                hudViewMode = BasketballHudViewMode.FreeCamera;
+            }
+            else if (hudViewMode == BasketballHudViewMode.FreeCamera)
+            {
+                hudViewMode = modeBeforeFreeCamera;
+            }
+            if (isBound)
+            {
                 ApplyVisibility();
             }
         }
 
         public void SetMatchStatus(string value)
         {
-            if (modeLabel != null && value != lastModeText)
+            if (value != lastModeText)
             {
-                modeLabel.text = value;
+                if (modeLabel != null)
+                {
+                    modeLabel.text = value;
+                }
+                if (gameplayModeLabel != null)
+                {
+                    gameplayModeLabel.text = value;
+                }
+                if (freeCameraModeLabel != null)
+                {
+                    freeCameraModeLabel.text = value;
+                }
                 lastModeText = value;
             }
         }

@@ -1,3 +1,4 @@
+using System;
 using UnityEngine;
 
 namespace CrowdEyes.AI4Animation.Basketball
@@ -59,6 +60,14 @@ namespace CrowdEyes.AI4Animation.Basketball
 
         public void Initialize(Transform root, BasketballSkeleton skeleton, BasketballBallController ball)
         {
+            // Initialize is also the closed-loop reset path. Clear every channel
+            // that is not overwritten below so an old contact, phase, or intent
+            // cannot leak into a newly seeded formation.
+            Array.Clear(Styles, 0, Styles.Length);
+            Array.Clear(Contacts, 0, Contacts.Length);
+            Array.Clear(Phases, 0, Phases.Length);
+            Array.Clear(Amplitudes, 0, Amplitudes.Length);
+
             ActorRootPosition = root.position;
             ActorRootRotation = root.rotation;
             for (int sample = 0; sample < SampleCount; sample++)
@@ -85,6 +94,12 @@ namespace CrowdEyes.AI4Animation.Basketball
 
             Carrier = true;
             Rival = null;
+            HoldIntent = false;
+            ShootIntent = false;
+            BallHorizontalControl = false;
+            BallHeightControl = false;
+            BallSpeedControl = false;
+            MoveIntent = false;
             TickCount = 0;
         }
 

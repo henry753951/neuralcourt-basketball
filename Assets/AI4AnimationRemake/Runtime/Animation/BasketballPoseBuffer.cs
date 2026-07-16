@@ -16,14 +16,19 @@ namespace CrowdEyes.AI4Animation.Basketball
         {
             RootPosition = state.ActorRootPosition;
             RootRotation = state.ActorRootRotation;
-            BallPosition = state.BallPositions[BasketballAgentState.Pivot];
-            BallRotation = state.BallRotations[BasketballAgentState.Pivot];
-            BallVelocity = state.BallVelocities[BasketballAgentState.Pivot];
+            CaptureBall(state);
             for (int bone = 0; bone < BasketballSkeleton.BoneCount; bone++)
             {
                 BonePositions[bone] = state.BonePositions[bone];
                 BoneRotations[bone] = state.BoneRotations[bone];
             }
+        }
+
+        public void CaptureBall(BasketballAgentState state)
+        {
+            BallPosition = state.BallPositions[BasketballAgentState.Pivot];
+            BallRotation = state.BallRotations[BasketballAgentState.Pivot];
+            BallVelocity = state.BallVelocities[BasketballAgentState.Pivot];
         }
     }
 }

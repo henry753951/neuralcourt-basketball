@@ -11,7 +11,8 @@ namespace CrowdEyes.AI4Animation.Basketball
         ShotFlight,
         Loose,
         Contested,
-        CatchBlend
+        CatchBlend,
+        DeadBall
     }
 
     public enum BasketballBallControlMode
@@ -20,7 +21,8 @@ namespace CrowdEyes.AI4Animation.Basketball
         NeuralPassPreparation,
         PhysicsFlight,
         PhysicsContested,
-        CatchBlend
+        CatchBlend,
+        DeadBall
     }
 
     public enum BasketballPassType
@@ -53,6 +55,9 @@ namespace CrowdEyes.AI4Animation.Basketball
         public Vector3 DesiredReleasePosition;
         public Vector3 DesiredReleaseDirection;
         public Vector3 DesiredReleaseVelocity;
+        public float RequiredReleaseSpeed;
+        public float MaximumAllowedReleaseSpeed;
+        public bool IsSupported;
         public float MaximumDirectionCorrection;
         public float MaximumSpeedScale;
         public float MaximumVerticalCorrection;

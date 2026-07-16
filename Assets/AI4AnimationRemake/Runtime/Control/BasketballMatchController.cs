@@ -7,6 +7,7 @@ namespace CrowdEyes.AI4Animation.Basketball
     [DisallowMultipleComponent]
     public sealed class BasketballMatchController : MonoBehaviour
     {
+        [SerializeField] private BasketballTeamGroup[] teamGroups;
         [SerializeField] private BasketballTeamMember[] players;
         [SerializeField] private BasketballBallController ball;
         [SerializeField] private BasketballPossessionManager possessionManager;
@@ -171,9 +172,34 @@ namespace CrowdEyes.AI4Animation.Basketball
             UpdateHudStatus();
         }
 
+        private void CollectPlayersFromTeamGroups()
+        {
+            if (teamGroups == null || teamGroups.Length == 0) return;
+            var discoveredPlayers = new System.Collections.Generic.List<BasketballTeamMember>();
+            foreach (var group in teamGroups)
+            {
+                if (group != null)
+                {
+                    discoveredPlayers.AddRange(group.CollectMembers());
+                }
+            }
+            if (discoveredPlayers.Count > 0)
+            {
+                discoveredPlayers.Sort((a, b) => a.PlayerIndex.CompareTo(b.PlayerIndex));
+                players = discoveredPlayers.ToArray();
+            }
+        }
+
         public void InitializeMatch()
         {
             PrepareRuntimeSettings();
+
+            CollectPlayersFromTeamGroups();
+            if (possessionManager != null)
+            {
+                possessionManager.ConfigurePlayers(players);
+            }
+
             if (initialized || players == null || players.Length == 0 || ball == null ||
                 possessionManager == null)
             {

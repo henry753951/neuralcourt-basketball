@@ -812,6 +812,17 @@ MeshFilter:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 290178020}
   m_Mesh: {fileID: 10202, guid: 0000000000000000e000000000000000, type: 0}
+--- !u!114 &338598260 stripped
+MonoBehaviour:
+  m_CorrespondingSourceObject: {fileID: 9001262070925445571, guid: 48d57d07c7ecfb949b01d8adf5a7871b, type: 3}
+  m_PrefabInstance: {fileID: 2132929039}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: be4d378cbe2ed3e468a2d88ff49aa7f9, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: CrowdEyes.AI4Animation.Runtime::CrowdEyes.AI4Animation.Basketball.BasketballTeamGroup
 --- !u!1 &346336470
 GameObject:
   m_ObjectHideFlags: 0
@@ -1061,6 +1072,17 @@ Transform:
   - {fileID: 373029733}
   m_Father: {fileID: 1351568392}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!114 &803533736 stripped
+MonoBehaviour:
+  m_CorrespondingSourceObject: {fileID: 5701579682001835783, guid: 48d57d07c7ecfb949b01d8adf5a7871b, type: 3}
+  m_PrefabInstance: {fileID: 2132929039}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: be4d378cbe2ed3e468a2d88ff49aa7f9, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: CrowdEyes.AI4Animation.Runtime::CrowdEyes.AI4Animation.Basketball.BasketballTeamGroup
 --- !u!1 &807392543
 GameObject:
   m_ObjectHideFlags: 0
@@ -1196,6 +1218,9 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: b7df281b342877a4bbe0d6f613076048, type: 3}
   m_Name: 
   m_EditorClassIdentifier: CrowdEyes.AI4Animation.Runtime::CrowdEyes.AI4Animation.Basketball.BasketballMatchController
+  teamGroups:
+  - {fileID: 803533736}
+  - {fileID: 338598260}
   players:
   - {fileID: 2132929049}
   - {fileID: 2132929048}
@@ -1243,6 +1268,9 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 6aaaff3fdf313844bbc6474fca215e7f, type: 3}
   m_Name: 
   m_EditorClassIdentifier: CrowdEyes.AI4Animation.Runtime::CrowdEyes.AI4Animation.Basketball.BasketballPossessionManager
+  teamGroups:
+  - {fileID: 803533736}
+  - {fileID: 338598260}
   players:
   - {fileID: 2132929049}
   - {fileID: 2132929048}

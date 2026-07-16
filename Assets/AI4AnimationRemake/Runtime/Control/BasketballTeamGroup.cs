@@ -39,6 +39,32 @@ namespace CrowdEyes.AI4Animation.Basketball
             maximumEffectiveShotDistance = Mathf.Max(1f, maximumEffectiveShotDistance);
         }
 
+        private BasketballTeamMember[] cachedMembers;
+
+        public BasketballTeamMember[] Members
+        {
+            get
+            {
+                if (cachedMembers == null)
+                {
+                    cachedMembers = CollectMembers();
+                }
+                return cachedMembers;
+            }
+        }
+
+        public void InvalidateCache()
+        {
+            cachedMembers = null;
+        }
+
+        public BasketballTeamMember[] CollectMembers()
+        {
+            var members = GetComponentsInChildren<BasketballTeamMember>(true);
+            System.Array.Sort(members, (a, b) => a.PlayerIndex.CompareTo(b.PlayerIndex));
+            return members;
+        }
+
 #if UNITY_EDITOR
         public void Configure(
             int id,

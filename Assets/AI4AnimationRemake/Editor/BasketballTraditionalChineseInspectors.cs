@@ -377,7 +377,7 @@ namespace CrowdEyes.AI4Animation.Editor
                     "場景連接",
                     "這些是場景物件引用。正常調參時通常不需要更動。"))
             {
-                BasketballInspectorGUI.Property(serializedObject, "players", "球員清單", "必須依 Player Index 排列。目前 GPU Batch 固定需要十名球員（5v5）。" );
+                BasketballInspectorGUI.Property(serializedObject, "teamGroups", "參賽隊伍", "比賽中的所有隊伍（如 Home 與 Away）。系統會在遊戲開始時自動抓取旗下的所有球員。" );
                 BasketballInspectorGUI.Property(serializedObject, "ball", "共用比賽球", "所有球權與物理狀態共用的唯一實體球。" );
                 BasketballInspectorGUI.Property(serializedObject, "possessionManager", "球權管理器", "唯一球權、傳球、接球、攔截與搶球仲裁來源。" );
                 BasketballInspectorGUI.Property(serializedObject, "court", "比賽球場／Court", "提供雙籃框、進攻方向、三分線與投籃目標。" );
@@ -606,7 +606,7 @@ namespace CrowdEyes.AI4Animation.Editor
 
             if (BasketballInspectorGUI.Section(ref showReferences, "場景連接"))
             {
-                BasketballInspectorGUI.Property(serializedObject, "players", "參與球權仲裁的球員", "所有可能持球、接球、攔截與搶球的球員。" );
+                BasketballInspectorGUI.Property(serializedObject, "teamGroups", "參賽隊伍", "系統會在遊戲開始時自動抓取旗下的所有球員。" );
                 BasketballInspectorGUI.Property(serializedObject, "ball", "唯一實體球", "由 NeuralPossession 或 Rigidbody Physics 擇一控制。" );
                 BasketballInspectorGUI.Property(serializedObject, "court", "球場與籃框", "Shoot 離手時用正確進攻籃框解算一次性物理速度。" );
                 BasketballInspectorGUI.Property(serializedObject, "worldEventStream", "世界事件紀錄", "由 Match 注入的固定容量事件流；球權系統只發布結果，不自行分配策略。" );
@@ -1162,23 +1162,10 @@ namespace CrowdEyes.AI4Animation.Editor
                 "固定將十名球員（5v5）打包成一個 Unity Inference Engine GPUCompute Batch。每名球員仍保有獨立 recurrent state。");
             BasketballInspectorGUI.Property(
                 serializedObject,
-                "players",
-                "Batch 球員（固定 10 人）",
-                "順序必須與 BasketballMatch 的球員清單一致。少於或多於十人都不會啟動。" );
-            BasketballInspectorGUI.Property(
-                serializedObject,
                 "modelAsset",
                 "Batch ONNX 模型",
                 "留空時會載入 Resources/Models/BasketballMoEBatch10。模型必須符合固定 input／batch_output contract。" );
             serializedObject.ApplyModifiedProperties();
-
-            SerializedProperty players = serializedObject.FindProperty("players");
-            if (players != null && players.arraySize != BasketballSentisBatchScheduler.BatchSize)
-            {
-                EditorGUILayout.HelpBox(
-                    $"GPU Batch 必須剛好有 {BasketballSentisBatchScheduler.BatchSize} 名球員；目前是 {players.arraySize}。",
-                    MessageType.Error);
-            }
 
             BasketballInspectorGUI.ReadOnly(
                 "目前圖形 API",

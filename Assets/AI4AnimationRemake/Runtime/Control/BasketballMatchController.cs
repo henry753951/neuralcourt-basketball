@@ -8,7 +8,7 @@ namespace CrowdEyes.AI4Animation.Basketball
     public sealed class BasketballMatchController : MonoBehaviour
     {
         [SerializeField] private BasketballTeamGroup[] teamGroups;
-        [SerializeField] private BasketballTeamMember[] players;
+        private BasketballTeamMember[] players;
         [SerializeField] private BasketballBallController ball;
         [SerializeField] private BasketballPossessionManager possessionManager;
         [SerializeField] private BasketballCourt court;
@@ -189,16 +189,6 @@ namespace CrowdEyes.AI4Animation.Basketball
                 players = discoveredPlayers.ToArray();
             }
         }
-
-#if UNITY_EDITOR
-        private void OnValidate()
-        {
-            if (!Application.isPlaying)
-            {
-                CollectPlayersFromTeamGroups();
-            }
-        }
-#endif
 
         public void InitializeMatch()
         {

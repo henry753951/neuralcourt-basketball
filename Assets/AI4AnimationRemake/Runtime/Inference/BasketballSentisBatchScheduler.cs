@@ -32,7 +32,7 @@ namespace CrowdEyes.AI4Animation.Basketball
         private static readonly ProfilerMarker ReadbackMarker =
             new("Basketball.Inference.Sentis.Readback");
 
-        [SerializeField] private BasketballTeamMember[] players;
+        private BasketballTeamMember[] players;
         [SerializeField] private SentisModelAsset modelAsset;
 
         private readonly BasketballNeuralController[] controllers =

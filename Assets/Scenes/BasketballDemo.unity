@@ -1198,15 +1198,15 @@ MonoBehaviour:
   m_EditorClassIdentifier: CrowdEyes.AI4Animation.Runtime::CrowdEyes.AI4Animation.Basketball.BasketballMatchController
   players:
   - {fileID: 2132929049}
-  - {fileID: 0}
-  - {fileID: 0}
-  - {fileID: 0}
-  - {fileID: 0}
+  - {fileID: 2132929048}
+  - {fileID: 2132929047}
+  - {fileID: 2132929046}
+  - {fileID: 2132929045}
   - {fileID: 2132929044}
-  - {fileID: 0}
-  - {fileID: 0}
-  - {fileID: 0}
-  - {fileID: 0}
+  - {fileID: 2132929043}
+  - {fileID: 2132929042}
+  - {fileID: 2132929041}
+  - {fileID: 2132929040}
   ball: {fileID: 807392544}
   possessionManager: {fileID: 872235548}
   court: {fileID: 55967177}

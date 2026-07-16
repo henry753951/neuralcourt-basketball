@@ -158,6 +158,28 @@ namespace CrowdEyes.AI4Animation.Basketball
             players = new System.Collections.Generic.List<BasketballTeamMember>(newPlayers).ToArray();
         }
 
+#if UNITY_EDITOR
+        private void OnValidate()
+        {
+            if (!Application.isPlaying && teamGroups != null && teamGroups.Length > 0)
+            {
+                var discoveredPlayers = new System.Collections.Generic.List<BasketballTeamMember>();
+                foreach (var group in teamGroups)
+                {
+                    if (group != null)
+                    {
+                        discoveredPlayers.AddRange(group.CollectMembers());
+                    }
+                }
+                if (discoveredPlayers.Count > 0)
+                {
+                    discoveredPlayers.Sort((a, b) => a.PlayerIndex.CompareTo(b.PlayerIndex));
+                    players = discoveredPlayers.ToArray();
+                }
+            }
+        }
+#endif
+
         public void Initialize()
         {
             if (initialized)

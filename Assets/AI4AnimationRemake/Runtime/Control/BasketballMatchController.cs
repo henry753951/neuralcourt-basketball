@@ -190,6 +190,16 @@ namespace CrowdEyes.AI4Animation.Basketball
             }
         }
 
+#if UNITY_EDITOR
+        private void OnValidate()
+        {
+            if (!Application.isPlaying)
+            {
+                CollectPlayersFromTeamGroups();
+            }
+        }
+#endif
+
         public void InitializeMatch()
         {
             PrepareRuntimeSettings();
@@ -1430,8 +1440,8 @@ namespace CrowdEyes.AI4Animation.Basketball
 
         private void EnsureSentisBatchScheduler()
         {
-            if (players == null ||
-                players.Length != BasketballSentisBatchScheduler.BatchSize)
+            if (players == null || players.Length == 0 ||
+                players.Length > BasketballSentisBatchScheduler.BatchSize)
             {
                 return;
             }

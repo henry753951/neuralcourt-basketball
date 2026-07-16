@@ -225,24 +225,29 @@ namespace CrowdEyes.AI4Animation.Basketball
 
         private void ResolveControllers()
         {
-            if (players == null || players.Length != BatchSize)
+            if (players == null || players.Length > BatchSize)
             {
                 throw new InvalidOperationException(
-                    $"Sentis batch requires exactly {BatchSize} players.");
+                    $"Sentis batch supports at most {BatchSize} players.");
             }
             for (int index = 0; index < BatchSize; index++)
             {
-                BasketballTeamMember member = players[index];
-                BasketballNeuralController controller = member != null
-                    ? member.Controller
-                    : null;
-                if (controller == null)
+                if (index < players.Length && players[index] != null)
                 {
-                    throw new InvalidOperationException(
-                        $"Sentis batch player {index + 1} has no neural controller.");
+                    BasketballTeamMember member = players[index];
+                    BasketballNeuralController controller = member.Controller;
+                    if (controller == null)
+                    {
+                        throw new InvalidOperationException(
+                            $"Sentis batch player {index + 1} has no neural controller.");
+                    }
+                    controller.Initialize();
+                    controllers[index] = controller;
                 }
-                controller.Initialize();
-                controllers[index] = controller;
+                else
+                {
+                    controllers[index] = null;
+                }
             }
         }
 
@@ -332,10 +337,17 @@ namespace CrowdEyes.AI4Animation.Basketball
                     Span<float> row = batchInput.AsSpan(
                         index * BasketballModelContract.InputFeatureCount,
                         BasketballModelContract.InputFeatureCount);
-                    if (!controllers[index].PrepareExternalTick(row))
+                    if (controllers[index] != null)
                     {
-                        throw new InvalidOperationException(
-                            $"Player {index + 1} produced an invalid neural input.");
+                        if (!controllers[index].PrepareExternalTick(row))
+                        {
+                            throw new InvalidOperationException(
+                                $"Player {index + 1} produced an invalid neural input.");
+                        }
+                    }
+                    else
+                    {
+                        row.Clear();
                     }
                 }
 
@@ -367,14 +379,17 @@ namespace CrowdEyes.AI4Animation.Basketball
                     ReadOnlySpan<float> values = batchOutput;
                     for (int index = 0; index < BatchSize; index++)
                     {
-                        int rowStart = index * CombinedOutputCount;
-                        controllers[index].CompleteExternalTick(
-                            values.Slice(
-                                rowStart,
-                                BasketballModelContract.OutputFeatureCount),
-                            values.Slice(
-                                rowStart + BasketballModelContract.OutputFeatureCount,
-                                BasketballModelContract.ExpertCount));
+                        if (controllers[index] != null)
+                        {
+                            int rowStart = index * CombinedOutputCount;
+                            controllers[index].CompleteExternalTick(
+                                values.Slice(
+                                    rowStart,
+                                    BasketballModelContract.OutputFeatureCount),
+                                values.Slice(
+                                    rowStart + BasketballModelContract.OutputFeatureCount,
+                                    BasketballModelContract.ExpertCount));
+                        }
                     }
                 }
 

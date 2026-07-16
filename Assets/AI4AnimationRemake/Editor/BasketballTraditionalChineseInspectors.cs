@@ -1292,6 +1292,25 @@ namespace CrowdEyes.AI4Animation.Editor
             BasketballInspectorGUI.Header(
                 "Basketball Team Group／隊伍外層設定",
                 "Home／Away 的共用參數集中在此。子 Player Prefab 只保留背號、索引與個人力量差異，方便重建與管理。" );
+            
+            GUILayout.Space(10);
+            GUILayout.Label("快速陣容切換 (Quick Roster Toggle)", EditorStyles.boldLabel);
+            GUILayout.BeginHorizontal();
+            if (GUILayout.Button("1 vs 1"))
+            {
+                ApplyRosterLimit(1);
+            }
+            if (GUILayout.Button("3 vs 3"))
+            {
+                ApplyRosterLimit(3);
+            }
+            if (GUILayout.Button("5 vs 5"))
+            {
+                ApplyRosterLimit(5);
+            }
+            GUILayout.EndHorizontal();
+            GUILayout.Space(10);
+
             BasketballInspectorGUI.Property(serializedObject, "teamId", "隊伍 ID", "同隊傳球與攻守方向使用的穩定識別碼。" );
             BasketballInspectorGUI.Property(serializedObject, "displayName", "隊伍名稱", "Hierarchy、UI 與未來外部 AI 可讀的隊伍名稱。" );
             BasketballInspectorGUI.Property(serializedObject, "maximumPassReleaseSpeed", "隊伍基準最大傳球速度 (m/s)", "Power=1.0 球員的物理離手上限；較弱或較強球員由 Player 的 Maximum Power 乘上此值。" );
@@ -1299,6 +1318,36 @@ namespace CrowdEyes.AI4Animation.Editor
             BasketballInspectorGUI.Property(serializedObject, "maximumEffectivePassDistance", "AI 最大有效傳球距離 (m)", "規則 AI 不會主動選擇超出此距離的隊友。" );
             BasketballInspectorGUI.Property(serializedObject, "maximumEffectiveShotDistance", "AI 最大有效投籃距離 (m)", "規則 AI 不會主動在能力範圍外投籃。" );
             serializedObject.ApplyModifiedProperties();
+        }
+
+        private void ApplyRosterLimit(int count)
+        {
+            foreach (var t in targets)
+            {
+                BasketballTeamGroup group = (BasketballTeamGroup)t;
+                var members = group.GetComponentsInChildren<BasketballTeamMember>(true);
+                System.Array.Sort(members, (a, b) => a.PlayerIndex.CompareTo(b.PlayerIndex));
+                for (int i = 0; i < members.Length; i++)
+                {
+                    members[i].gameObject.SetActive(i < count);
+                }
+            }
+
+            BasketballMatchController match = FindObjectOfType<BasketballMatchController>();
+            if (match != null)
+            {
+                Undo.RecordObject(match, "Apply Roster Limit");
+                SerializedObject matchSo = new SerializedObject(match);
+                var matchModeProp = matchSo.FindProperty("matchMode");
+                if (matchModeProp != null)
+                {
+                    matchModeProp.enumValueIndex = count == 1 ? (int)BasketballMatchMode.OneOnOne :
+                                                   count == 3 ? (int)BasketballMatchMode.ThreeOnThree :
+                                                   count == 5 ? (int)BasketballMatchMode.FiveOnFive :
+                                                   (int)BasketballMatchMode.Custom;
+                    matchSo.ApplyModifiedProperties();
+                }
+            }
         }
     }
 

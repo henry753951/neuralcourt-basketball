@@ -1221,17 +1221,6 @@ MonoBehaviour:
   teamGroups:
   - {fileID: 803533736}
   - {fileID: 338598260}
-  players:
-  - {fileID: 2132929049}
-  - {fileID: 2132929048}
-  - {fileID: 2132929047}
-  - {fileID: 2132929046}
-  - {fileID: 2132929045}
-  - {fileID: 2132929044}
-  - {fileID: 2132929043}
-  - {fileID: 2132929042}
-  - {fileID: 2132929041}
-  - {fileID: 2132929040}
   ball: {fileID: 807392544}
   possessionManager: {fileID: 872235548}
   court: {fileID: 55967177}
@@ -1240,7 +1229,7 @@ MonoBehaviour:
   hud: {fileID: 1897570491}
   sentisBatchScheduler: {fileID: 0}
   runtimeSettings: {fileID: 11400000, guid: 0cc8e040d8ae42a4b69cf09c0c4cc0ee, type: 2}
-  matchMode: 5
+  matchMode: 1
   controlMode: 1
   customHomePlayers: 5
   customAwayPlayers: 5
@@ -1271,17 +1260,6 @@ MonoBehaviour:
   teamGroups:
   - {fileID: 803533736}
   - {fileID: 338598260}
-  players:
-  - {fileID: 2132929049}
-  - {fileID: 2132929048}
-  - {fileID: 2132929047}
-  - {fileID: 2132929046}
-  - {fileID: 2132929045}
-  - {fileID: 2132929044}
-  - {fileID: 2132929043}
-  - {fileID: 2132929042}
-  - {fileID: 2132929041}
-  - {fileID: 2132929040}
   ball: {fileID: 807392544}
   court: {fileID: 55967177}
   worldEventStream: {fileID: 872235552}
@@ -1313,6 +1291,9 @@ MonoBehaviour:
   stealSecureHandDistance: 0.28
   maximumStealSecureRelativeSpeed: 6.5
   contestedTimeout: 0.8
+  contestedLeaderHoldSeconds: 0.16
+  contestedTieQualityMargin: 0.06
+  contestedBreakawaySpeed: 2.2
   possessionCooldown: 0.65
   catchBlendSeconds: 0.18
   interactionTuningVersion: 1
@@ -1349,6 +1330,7 @@ MonoBehaviour:
   maximumShotAlignTime: 0.22
   driveStopDistance: 4.2
   defenseSpacing: 0.9
+  defensiveAggression: 0.72
   stealAttemptDistance: 1.15
   minimumStealFacingDot: 0.35
   stealAttemptDuration: 0.18
@@ -1914,7 +1896,7 @@ PrefabInstance:
     m_Modifications:
     - target: {fileID: 103227886690022951, guid: 48d57d07c7ecfb949b01d8adf5a7871b, type: 3}
       propertyPath: m_IsActive
-      value: 1
+      value: 0
       objectReference: {fileID: 0}
     - target: {fileID: 1077617357422393591, guid: 48d57d07c7ecfb949b01d8adf5a7871b, type: 3}
       propertyPath: movementCamera
@@ -1930,7 +1912,7 @@ PrefabInstance:
       objectReference: {fileID: 807392544}
     - target: {fileID: 2321795333143660389, guid: 48d57d07c7ecfb949b01d8adf5a7871b, type: 3}
       propertyPath: m_IsActive
-      value: 1
+      value: 0
       objectReference: {fileID: 0}
     - target: {fileID: 3319190528813247434, guid: 48d57d07c7ecfb949b01d8adf5a7871b, type: 3}
       propertyPath: ball
@@ -1946,7 +1928,7 @@ PrefabInstance:
       objectReference: {fileID: 74907546}
     - target: {fileID: 4328733876789583658, guid: 48d57d07c7ecfb949b01d8adf5a7871b, type: 3}
       propertyPath: m_IsActive
-      value: 1
+      value: 0
       objectReference: {fileID: 0}
     - target: {fileID: 4657910912703017742, guid: 48d57d07c7ecfb949b01d8adf5a7871b, type: 3}
       propertyPath: movementCamera
@@ -2018,15 +2000,15 @@ PrefabInstance:
       objectReference: {fileID: 74907546}
     - target: {fileID: 6454622246691409764, guid: 48d57d07c7ecfb949b01d8adf5a7871b, type: 3}
       propertyPath: m_IsActive
-      value: 1
+      value: 0
       objectReference: {fileID: 0}
     - target: {fileID: 6690146327682746930, guid: 48d57d07c7ecfb949b01d8adf5a7871b, type: 3}
       propertyPath: m_IsActive
-      value: 1
+      value: 0
       objectReference: {fileID: 0}
     - target: {fileID: 6916049376735798688, guid: 48d57d07c7ecfb949b01d8adf5a7871b, type: 3}
       propertyPath: m_IsActive
-      value: 1
+      value: 0
       objectReference: {fileID: 0}
     - target: {fileID: 6935662440367644723, guid: 48d57d07c7ecfb949b01d8adf5a7871b, type: 3}
       propertyPath: ball
@@ -2042,7 +2024,7 @@ PrefabInstance:
       objectReference: {fileID: 807392544}
     - target: {fileID: 7680719204903712481, guid: 48d57d07c7ecfb949b01d8adf5a7871b, type: 3}
       propertyPath: m_IsActive
-      value: 1
+      value: 0
       objectReference: {fileID: 0}
     - target: {fileID: 7743336461846112441, guid: 48d57d07c7ecfb949b01d8adf5a7871b, type: 3}
       propertyPath: movementCamera
@@ -2058,7 +2040,7 @@ PrefabInstance:
       objectReference: {fileID: 74907546}
     - target: {fileID: 8233299799372125395, guid: 48d57d07c7ecfb949b01d8adf5a7871b, type: 3}
       propertyPath: m_IsActive
-      value: 1
+      value: 0
       objectReference: {fileID: 0}
     - target: {fileID: 8374674534570473512, guid: 48d57d07c7ecfb949b01d8adf5a7871b, type: 3}
       propertyPath: movementCamera
@@ -2073,116 +2055,6 @@ PrefabInstance:
     m_AddedGameObjects: []
     m_AddedComponents: []
   m_SourcePrefab: {fileID: 100100000, guid: 48d57d07c7ecfb949b01d8adf5a7871b, type: 3}
---- !u!114 &2132929040 stripped
-MonoBehaviour:
-  m_CorrespondingSourceObject: {fileID: 8550477708033144048, guid: 48d57d07c7ecfb949b01d8adf5a7871b, type: 3}
-  m_PrefabInstance: {fileID: 2132929039}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 0}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: d2557456e5bb7d94ea7bf4ca99ec999b, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: CrowdEyes.AI4Animation.Runtime::CrowdEyes.AI4Animation.Basketball.BasketballTeamMember
---- !u!114 &2132929041 stripped
-MonoBehaviour:
-  m_CorrespondingSourceObject: {fileID: 3338495152737258931, guid: 48d57d07c7ecfb949b01d8adf5a7871b, type: 3}
-  m_PrefabInstance: {fileID: 2132929039}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 0}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: d2557456e5bb7d94ea7bf4ca99ec999b, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: CrowdEyes.AI4Animation.Runtime::CrowdEyes.AI4Animation.Basketball.BasketballTeamMember
---- !u!114 &2132929042 stripped
-MonoBehaviour:
-  m_CorrespondingSourceObject: {fileID: 1380575485106857150, guid: 48d57d07c7ecfb949b01d8adf5a7871b, type: 3}
-  m_PrefabInstance: {fileID: 2132929039}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 0}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: d2557456e5bb7d94ea7bf4ca99ec999b, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: CrowdEyes.AI4Animation.Runtime::CrowdEyes.AI4Animation.Basketball.BasketballTeamMember
---- !u!114 &2132929043 stripped
-MonoBehaviour:
-  m_CorrespondingSourceObject: {fileID: 8350278663588819366, guid: 48d57d07c7ecfb949b01d8adf5a7871b, type: 3}
-  m_PrefabInstance: {fileID: 2132929039}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 0}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: d2557456e5bb7d94ea7bf4ca99ec999b, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: CrowdEyes.AI4Animation.Runtime::CrowdEyes.AI4Animation.Basketball.BasketballTeamMember
---- !u!114 &2132929044 stripped
-MonoBehaviour:
-  m_CorrespondingSourceObject: {fileID: 6581067991399766011, guid: 48d57d07c7ecfb949b01d8adf5a7871b, type: 3}
-  m_PrefabInstance: {fileID: 2132929039}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 0}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: d2557456e5bb7d94ea7bf4ca99ec999b, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: CrowdEyes.AI4Animation.Runtime::CrowdEyes.AI4Animation.Basketball.BasketballTeamMember
---- !u!114 &2132929045 stripped
-MonoBehaviour:
-  m_CorrespondingSourceObject: {fileID: 5020792288810913141, guid: 48d57d07c7ecfb949b01d8adf5a7871b, type: 3}
-  m_PrefabInstance: {fileID: 2132929039}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 0}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: d2557456e5bb7d94ea7bf4ca99ec999b, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: CrowdEyes.AI4Animation.Runtime::CrowdEyes.AI4Animation.Basketball.BasketballTeamMember
---- !u!114 &2132929046 stripped
-MonoBehaviour:
-  m_CorrespondingSourceObject: {fileID: 6735278497931521863, guid: 48d57d07c7ecfb949b01d8adf5a7871b, type: 3}
-  m_PrefabInstance: {fileID: 2132929039}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 0}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: d2557456e5bb7d94ea7bf4ca99ec999b, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: CrowdEyes.AI4Animation.Runtime::CrowdEyes.AI4Animation.Basketball.BasketballTeamMember
---- !u!114 &2132929047 stripped
-MonoBehaviour:
-  m_CorrespondingSourceObject: {fileID: 1081609506882206961, guid: 48d57d07c7ecfb949b01d8adf5a7871b, type: 3}
-  m_PrefabInstance: {fileID: 2132929039}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 0}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: d2557456e5bb7d94ea7bf4ca99ec999b, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: CrowdEyes.AI4Animation.Runtime::CrowdEyes.AI4Animation.Basketball.BasketballTeamMember
---- !u!114 &2132929048 stripped
-MonoBehaviour:
-  m_CorrespondingSourceObject: {fileID: 8124692548778204724, guid: 48d57d07c7ecfb949b01d8adf5a7871b, type: 3}
-  m_PrefabInstance: {fileID: 2132929039}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 0}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: d2557456e5bb7d94ea7bf4ca99ec999b, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: CrowdEyes.AI4Animation.Runtime::CrowdEyes.AI4Animation.Basketball.BasketballTeamMember
---- !u!114 &2132929049 stripped
-MonoBehaviour:
-  m_CorrespondingSourceObject: {fileID: 7630346051501286497, guid: 48d57d07c7ecfb949b01d8adf5a7871b, type: 3}
-  m_PrefabInstance: {fileID: 2132929039}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 0}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: d2557456e5bb7d94ea7bf4ca99ec999b, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: CrowdEyes.AI4Animation.Runtime::CrowdEyes.AI4Animation.Basketball.BasketballTeamMember
 --- !u!1660057539 &9223372036854775807
 SceneRoots:
   m_ObjectHideFlags: 0

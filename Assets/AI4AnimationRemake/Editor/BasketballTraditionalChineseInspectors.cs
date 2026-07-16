@@ -399,9 +399,40 @@ namespace CrowdEyes.AI4Animation.Editor
             {
                 BasketballInspectorGUI.Property(
                     serializedObject,
-                    "matchMode",
-                    "比賽模式",
-                    "選擇 1v1、3v3、5v5 或 Custom。所有模式共用同一套球權、傳球、投籃與神經動畫。" );
+                    "automaticMatchMode",
+                    "自動依上場名單切換",
+                    "啟用時依 Home／Away 目前啟用的 Player Prefab 自動判定 1v1～5v5；兩隊人數不同時自動使用 Custom。" );
+                SerializedProperty automatic = serializedObject.FindProperty(
+                    "automaticMatchMode");
+                bool useAutomatic = automatic != null && automatic.boolValue;
+                if (useAutomatic && targets.Length == 1)
+                {
+                    BasketballMatchController match =
+                        (BasketballMatchController)target;
+                    if (match.TryGetAutomaticRosterPreview(
+                            out int homePlayers,
+                            out int awayPlayers,
+                            out BasketballMatchMode detectedMode))
+                    {
+                        BasketballInspectorGUI.ReadOnly(
+                            "自動偵測結果",
+                            $"{homePlayers}v{awayPlayers} / {detectedMode}");
+                    }
+                    else
+                    {
+                        BasketballInspectorGUI.ReadOnly(
+                            "自動偵測結果",
+                            "Home／Away 至少各需啟用一名球員");
+                    }
+                }
+                else
+                {
+                    BasketballInspectorGUI.Property(
+                        serializedObject,
+                        "matchMode",
+                        "比賽模式",
+                        "手動選擇 1v1～5v5 或 Custom。所有模式共用同一套球權、傳球、投籃與神經動畫。" );
+                }
                 BasketballInspectorGUI.Property(
                     serializedObject,
                     "controlMode",
@@ -418,7 +449,7 @@ namespace CrowdEyes.AI4Animation.Editor
                     "決策 Policy 元件",
                     "可指定任何實作 IBasketballDecisionPolicy 的 MonoBehaviour。留空時使用上方內建 Rule AI；外部 Policy 仍只能輸出 Command，不能直接寫球權或 Transform。" );
                 SerializedProperty mode = serializedObject.FindProperty("matchMode");
-                if (mode != null && mode.enumValueIndex ==
+                if (!useAutomatic && mode != null && mode.enumValueIndex ==
                     (int)BasketballMatchMode.Custom)
                 {
                     BasketballInspectorGUI.Property(serializedObject, "customHomePlayers", "TEAM A 上場人數", "Custom 模式下 Team A 的有效球員數。" );
@@ -446,11 +477,18 @@ namespace CrowdEyes.AI4Animation.Editor
                     SerializedProperty selectedControl = serializedObject.FindProperty("controlMode");
                     SerializedProperty home = serializedObject.FindProperty("customHomePlayers");
                     SerializedProperty away = serializedObject.FindProperty("customAwayPlayers");
-                    match.ApplyMatchConfiguration(
-                        (BasketballMatchMode)selectedMode.intValue,
-                        (BasketballMatchControlMode)selectedControl.intValue,
-                        home.intValue,
-                        away.intValue);
+                    if (useAutomatic)
+                    {
+                        match.ApplyAutomaticRosterConfiguration(resetScore: false);
+                    }
+                    else
+                    {
+                        match.ApplyMatchConfiguration(
+                            (BasketballMatchMode)selectedMode.intValue,
+                            (BasketballMatchControlMode)selectedControl.intValue,
+                            home.intValue,
+                            away.intValue);
+                    }
                 }
             }
             BasketballInspectorGUI.EndSection();
@@ -659,6 +697,9 @@ namespace CrowdEyes.AI4Animation.Editor
             if (BasketballInspectorGUI.Section(ref showTiming, "球權時序"))
             {
                 BasketballInspectorGUI.Property(serializedObject, "contestedTimeout", "爭球逾時 (s)", "沒有任何人形成穩定控制時，多久後改成 Loose Ball。" );
+                BasketballInspectorGUI.Property(serializedObject, "contestedLeaderHoldSeconds", "爭球領先者維持時間 (s)", "手球品質最高者必須持續領先這段時間才可 Secure，避免同一幀直接換球權。" );
+                BasketballInspectorGUI.Property(serializedObject, "contestedTieQualityMargin", "爭球品質視為平手差距", "前兩名接觸品質差距小於此值時維持物理爭球，不立即選 Owner。" );
+                BasketballInspectorGUI.Property(serializedObject, "contestedBreakawaySpeed", "爭球解鎖球速 (m/s)", "逾時仍無法控制時，把球沿遠離人群方向拍開，避免所有人圍住球永久卡死。" );
                 BasketballInspectorGUI.Property(serializedObject, "possessionCooldown", "球權切換冷卻 (s)", "避免多人接觸時 Owner 在角色之間快速跳動。" );
                 BasketballInspectorGUI.Property(serializedObject, "catchBlendSeconds", "接球融合時間 (s)", "接球成立後，Rigidbody 球平滑交回神經持球狀態的時間。太長會黏，太短可能跳動。" );
             }
@@ -715,6 +756,7 @@ namespace CrowdEyes.AI4Animation.Editor
             BasketballInspectorGUI.Property(serializedObject, "maximumShotAlignTime", "AI 最長瞄準時間 (s)", "避免角色因模型轉向緩慢而永久卡在瞄準。" );
             BasketballInspectorGUI.Property(serializedObject, "driveStopDistance", "推進停止距離 (m)", "持球推進時保留在籃框前的目標距離。" );
             BasketballInspectorGUI.Property(serializedObject, "defenseSpacing", "防守站位距離 (m)", "防守者站在對位球員與己方防守籃框之間的距離。" );
+            BasketballInspectorGUI.Property(serializedObject, "defensiveAggression", "防守積極度", "同時調整貼防距離、追防加速、搶球角度與嘗試頻率；只增加動畫嘗試，球權仍需真實 Touch 與 Secure。" );
             BasketballInspectorGUI.Property(serializedObject, "stealAttemptDistance", "搶球嘗試距離 (m)", "只有對位持球者與球進入此距離才提出 Steal intent；成功仍需真實手球接觸。" );
             BasketballInspectorGUI.Property(serializedObject, "minimumStealFacingDot", "搶球最低面向", "防守者必須大致面向球，避免背對持球者仍伸手穿過身體。" );
             BasketballInspectorGUI.Property(serializedObject, "stealAttemptDuration", "單次伸手時間 (s)", "AI 的 Steal 是短脈衝，不會貼近後永久維持搶球姿勢。" );
@@ -733,8 +775,8 @@ namespace CrowdEyes.AI4Animation.Editor
             BasketballInspectorGUI.Property(serializedObject, "playerAvoidanceRadius", "Player Avoidance Radius／避碰半徑 (m)", "Off-ball、切入、退防與一般防守 steering 會在此半徑內互相讓位；不影響接球、攔截或 Loose Ball 的真實接觸。" );
             BasketballInspectorGUI.Property(serializedObject, "playerAvoidanceStrength", "Player Avoidance Strength／避碰強度", "提高會更積極分開重疊路徑；過高可能使目標附近左右擺動。" );
             BasketballInspectorGUI.Property(serializedObject, "courtBoundaryMargin", "Court Boundary Margin／場內邊界 (m)", "AI 目標會限制在球場邊線內此距離，避免規則式路徑把角色帶出場。" );
-            BasketballInspectorGUI.Property(serializedObject, "helpDefenseDepth", "Help Defense Depth／協防深度 (m)", "三人以上模式由一名 Off-ball Defender 移到持球者與籃框之間的協防位置。" );
-            BasketballInspectorGUI.Property(serializedObject, "cutLaneOffset", "Cut Lane Offset／空切橫向偏移 (m)", "三人以上模式只分配一名 Cutter，從持球者反側切入禁區，避免多人同時空切。" );
+            BasketballInspectorGUI.Property(serializedObject, "helpDefenseDepth", "Help Defense Depth／協防深度 (m)", "兩人以上模式由一名 Off-ball Defender 移到持球者與籃框之間的協防位置。" );
+            BasketballInspectorGUI.Property(serializedObject, "cutLaneOffset", "Cut Lane Offset／空切橫向偏移 (m)", "兩人以上模式只分配一名 Cutter；三人以上另外保留 Transition Safety，避免全隊同時衝向球。" );
             BasketballInspectorGUI.Property(serializedObject, "recoveryPredictionHorizon", "Recovery Prediction Horizon／落點預測上限 (s)", "預測 ShotFlight、Loose Ball 與傳球攔截的最長物理時間；球撞框或籃板後會在下一個決策幀重新預測。" );
             BasketballInspectorGUI.Property(serializedObject, "rollingBallLeadTime", "Rolling Ball Lead Time／滾球提前量 (s)", "球已接近地面時，不追舊座標，而是依目前平面速度預留短距離提前量。" );
             BasketballInspectorGUI.Property(serializedObject, "recoveryRunSpeed", "Recovery Run Speed／追球估計速度 (m/s)", "只用於比較誰能先到落點及攔截點；不直接改變 AI4Animation 的實際移動速度。" );
@@ -1057,6 +1099,7 @@ namespace CrowdEyes.AI4Animation.Editor
         private bool showNeural = true;
         private bool showPassing = true;
         private bool showShooting = true;
+        private bool showDefense = true;
         private bool showApplication;
         private bool showCamera;
         private bool showCameraCollision;
@@ -1088,6 +1131,12 @@ namespace CrowdEyes.AI4Animation.Editor
             if (BasketballInspectorGUI.Section(ref showPassing, "傳球物理與提前量"))
             {
                 BasketballInspectorGUI.DrawPassingSettings(serializedObject);
+            }
+            BasketballInspectorGUI.EndSection();
+
+            if (BasketballInspectorGUI.Section(ref showDefense, "防守動畫互動"))
+            {
+                BasketballInspectorGUI.Property(serializedObject, "stealReachAnimationDistance", "搶球動畫啟動距離 (m)", "非持球者在此 Root-to-ball 距離內，Steal 會把真實球位置傳入原模型 Hold 反應；只驅動姿勢，不會給球權或移動實體球。" );
             }
             BasketballInspectorGUI.EndSection();
 
@@ -1287,9 +1336,17 @@ namespace CrowdEyes.AI4Animation.Editor
             {
                 ApplyRosterLimit(1);
             }
+            if (GUILayout.Button("2 vs 2"))
+            {
+                ApplyRosterLimit(2);
+            }
             if (GUILayout.Button("3 vs 3"))
             {
                 ApplyRosterLimit(3);
+            }
+            if (GUILayout.Button("4 vs 4"))
+            {
+                ApplyRosterLimit(4);
             }
             if (GUILayout.Button("5 vs 5"))
             {
@@ -1320,20 +1377,40 @@ namespace CrowdEyes.AI4Animation.Editor
                 }
             }
 
-            BasketballMatchController match = FindObjectOfType<BasketballMatchController>();
+            BasketballMatchController match =
+                Object.FindAnyObjectByType<BasketballMatchController>();
             if (match != null)
             {
                 Undo.RecordObject(match, "Apply Roster Limit");
                 SerializedObject matchSo = new SerializedObject(match);
+                var automaticProp = matchSo.FindProperty("automaticMatchMode");
                 var matchModeProp = matchSo.FindProperty("matchMode");
-                if (matchModeProp != null)
+                var homeProp = matchSo.FindProperty("customHomePlayers");
+                var awayProp = matchSo.FindProperty("customAwayPlayers");
+                if (automaticProp != null)
                 {
-                    matchModeProp.enumValueIndex = count == 1 ? (int)BasketballMatchMode.OneOnOne :
-                                                   count == 3 ? (int)BasketballMatchMode.ThreeOnThree :
-                                                   count == 5 ? (int)BasketballMatchMode.FiveOnFive :
-                                                   (int)BasketballMatchMode.Custom;
-                    matchSo.ApplyModifiedProperties();
+                    automaticProp.boolValue = true;
                 }
+                if (match.TryGetAutomaticRosterPreview(
+                        out int homePlayers,
+                        out int awayPlayers,
+                        out BasketballMatchMode detectedMode))
+                {
+                    if (matchModeProp != null)
+                    {
+                        matchModeProp.intValue = (int)detectedMode;
+                    }
+                    if (homeProp != null)
+                    {
+                        homeProp.intValue = homePlayers;
+                    }
+                    if (awayProp != null)
+                    {
+                        awayProp.intValue = awayPlayers;
+                    }
+                }
+                matchSo.ApplyModifiedProperties();
+                EditorUtility.SetDirty(match);
             }
         }
     }

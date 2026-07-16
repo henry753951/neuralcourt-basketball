@@ -7059,6 +7059,8 @@ MonoBehaviour:
   contactPadding: 0.04
   maximumCorrectionPerTick: 0.09
   torsoOcclusionRadius: 0.3
+  armOcclusionRadius: 0.11
+  handOcclusionRadius: 0.1
 --- !u!1 &3802461577288291576
 GameObject:
   m_ObjectHideFlags: 0

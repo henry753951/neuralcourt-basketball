@@ -96,6 +96,10 @@ namespace CrowdEyes.AI4Animation.Basketball
         [SerializeField, Min(0.2f)] private float minimumShotReleaseHeight = 1.25f;
         [SerializeField, Range(0f, 1f)] private float naturalShotReleaseHandContact = 0.18f;
 
+        [Header("Defensive Interaction")]
+        [Tooltip("Maximum root-to-ball range where a non-owner steal intent may feed the real ball into the pretrained Hold response. This only drives animation; it never grants ball authority.")]
+        [SerializeField, Min(0.5f)] private float stealReachAnimationDistance = 1.55f;
+
         [Header("Camera Collision and Culling")]
         [SerializeField] private bool cameraCollisionEnabled = true;
         [SerializeField] private LayerMask cameraCollisionMask = (1 << 0) | (1 << 9);
@@ -167,6 +171,7 @@ namespace CrowdEyes.AI4Animation.Basketball
         public float ForcedShotReleaseSeconds => forcedShotReleaseSeconds;
         public float MinimumShotReleaseHeight => minimumShotReleaseHeight;
         public float NaturalShotReleaseHandContact => naturalShotReleaseHandContact;
+        public float StealReachAnimationDistance => stealReachAnimationDistance;
         public bool CameraCollisionEnabled => cameraCollisionEnabled;
         public LayerMask CameraCollisionMask => cameraCollisionMask;
         public float CameraCollisionRadius => cameraCollisionRadius;
@@ -329,6 +334,7 @@ namespace CrowdEyes.AI4Animation.Basketball
             minimumShotReleaseHeight = Mathf.Max(0.2f, minimumShotReleaseHeight);
             naturalShotReleaseHandContact = Mathf.Clamp01(
                 naturalShotReleaseHandContact);
+            stealReachAnimationDistance = Mathf.Max(0.5f, stealReachAnimationDistance);
         }
     }
 }

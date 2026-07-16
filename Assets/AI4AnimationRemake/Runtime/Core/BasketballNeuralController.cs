@@ -397,14 +397,22 @@ namespace CrowdEyes.AI4Animation.Basketball
                     ? false
                     : intent.Move.magnitude < 0.25f;
                 bool passControl = state.Carrier && intent.PassControl;
-                float stealHandDistance = !state.Carrier && intent.Steal
-                    ? Mathf.Min(
-                        Vector3.Distance(state.BonePositions[18], state.BallPositions[pivot]),
-                        Vector3.Distance(state.BonePositions[25], state.BallPositions[pivot]))
+                float stealReachDistance = RuntimeSettings != null
+                    ? RuntimeSettings.StealReachAnimationDistance
+                    : 1.55f;
+                float stealRootDistance = !state.Carrier && intent.Steal
+                    ? Vector3.Distance(
+                        state.ActorRootPosition,
+                        state.BallPositions[pivot])
                     : float.PositiveInfinity;
-                bool virtualStealHold = !state.Carrier && intent.Steal &&
-                                        stealHandDistance <= 0.65f;
-                bool directHold = intent.Hold || virtualStealHold;
+                // Feed the one real shared ball into the original Hold response
+                // before contact. This is animation intent only: possession
+                // authority still prevents this non-owner from writing the ball.
+                // It gives the pretrained model time to reach/pat toward the ball
+                // without inventing a visible proxy or teleporting ownership.
+                bool stealReachHold = !state.Carrier && intent.Steal &&
+                                      stealRootDistance <= stealReachDistance;
+                bool directHold = intent.Hold || stealReachHold;
                 bool catchReadyStyle = !state.Carrier && intent.CatchReady;
                 bool modelHoldStyle = directHold || catchReadyStyle;
                 float holdAction = passControl

@@ -17,6 +17,7 @@ namespace CrowdEyes.AI4Animation.Basketball
         [SerializeField] private BasketballUIToolkitController hud;
         [SerializeField] private BasketballSentisBatchScheduler sentisBatchScheduler;
         [SerializeField] private BasketballRuntimeSettings runtimeSettings;
+        [SerializeField] private bool automaticMatchMode = true;
         [SerializeField] private BasketballMatchMode matchMode = BasketballMatchMode.FiveOnFive;
         [SerializeField] private BasketballMatchControlMode controlMode =
             BasketballMatchControlMode.SelectedPlayerWithRuleAI;
@@ -91,6 +92,7 @@ namespace CrowdEyes.AI4Animation.Basketball
         public BasketballPossessionManager PossessionManager => possessionManager;
         public BasketballCourt Court => court;
         public BasketballMatchMode MatchMode => matchMode;
+        public bool AutomaticMatchMode => automaticMatchMode;
         public BasketballMatchControlMode ControlMode => controlMode;
         public BasketballTeamMember LockedTarget => lockedTarget;
         public BasketballSentisBatchScheduler SentisBatchScheduler => sentisBatchScheduler;
@@ -135,6 +137,10 @@ namespace CrowdEyes.AI4Animation.Basketball
             }
 
             if (!TryApplyPendingMatchConfiguration())
+            {
+                return;
+            }
+            if (TryRefreshAutomaticMatchConfiguration())
             {
                 return;
             }
@@ -195,6 +201,7 @@ namespace CrowdEyes.AI4Animation.Basketball
             PrepareRuntimeSettings();
 
             CollectPlayersFromTeamGroups();
+            SynchronizeAutomaticMatchModeFromRoster();
             if (possessionManager != null)
             {
                 possessionManager.ConfigurePlayers(players);
@@ -357,6 +364,41 @@ namespace CrowdEyes.AI4Animation.Basketball
             int homePlayers = 5,
             int awayPlayers = 5,
             bool resetScore = true)
+        {
+            automaticMatchMode = false;
+            return QueueMatchConfiguration(
+                newMatchMode,
+                newControlMode,
+                homePlayers,
+                awayPlayers,
+                resetScore);
+        }
+
+        public bool ApplyAutomaticRosterConfiguration(bool resetScore = false)
+        {
+            automaticMatchMode = true;
+            CollectPlayersFromTeamGroups();
+            if (!TryGetAuthoredRosterCounts(out int homePlayers, out int awayPlayers))
+            {
+                return false;
+            }
+            BasketballMatchMode detectedMode = ResolveMatchMode(
+                homePlayers,
+                awayPlayers);
+            return QueueMatchConfiguration(
+                detectedMode,
+                controlMode,
+                homePlayers,
+                awayPlayers,
+                resetScore);
+        }
+
+        private bool QueueMatchConfiguration(
+            BasketballMatchMode newMatchMode,
+            BasketballMatchControlMode newControlMode,
+            int homePlayers,
+            int awayPlayers,
+            bool resetScore)
         {
             matchMode = newMatchMode;
             controlMode = newControlMode;
@@ -600,8 +642,7 @@ namespace CrowdEyes.AI4Animation.Basketball
 
         private void RouteIntents(Keyboard keyboard)
         {
-            if (scoreRestartPending ||
-                (rulesManager != null && rulesManager.IsRestartPending))
+            if (rulesManager != null && rulesManager.IsRestartPending)
             {
                 callForPassActive = false;
                 CancelPass();
@@ -617,7 +658,8 @@ namespace CrowdEyes.AI4Animation.Basketball
 
             BasketballTeamMember active = ActivePlayer;
             Mouse mouse = Mouse.current;
-            bool allowHumanInput = !freeCameraMode &&
+            bool allowHumanInput = !scoreRestartPending &&
+                                   !freeCameraMode &&
                                    controlMode != BasketballMatchControlMode.FullRuleAI;
             bool controlHeld = allowHumanInput && keyboard != null &&
                                (keyboard.leftCtrlKey.isPressed || keyboard.rightCtrlKey.isPressed);
@@ -726,7 +768,8 @@ namespace CrowdEyes.AI4Animation.Basketball
                         ApplyActiveReceiveIntent(member, ref intent);
                     }
                 }
-                else if ((freeCameraMode ||
+                else if ((scoreRestartPending ||
+                          freeCameraMode ||
                           controlMode != BasketballMatchControlMode.SelectedPlayerOnly) &&
                           decisionPolicy != null)
                 {
@@ -1392,8 +1435,102 @@ namespace CrowdEyes.AI4Animation.Basketball
             return -1;
         }
 
+        public bool TryGetAutomaticRosterPreview(
+            out int homePlayers,
+            out int awayPlayers,
+            out BasketballMatchMode detectedMode)
+        {
+            CollectPlayersFromTeamGroups();
+            if (!TryGetAuthoredRosterCounts(out homePlayers, out awayPlayers))
+            {
+                detectedMode = BasketballMatchMode.Custom;
+                return false;
+            }
+            detectedMode = ResolveMatchMode(homePlayers, awayPlayers);
+            return true;
+        }
+
+        private bool TryRefreshAutomaticMatchConfiguration()
+        {
+            if (!automaticMatchMode || matchConfigurationPending ||
+                !TryGetAuthoredRosterCounts(out int homePlayers, out int awayPlayers))
+            {
+                return false;
+            }
+            BasketballMatchMode detectedMode = ResolveMatchMode(
+                homePlayers,
+                awayPlayers);
+            if (detectedMode == matchMode &&
+                homePlayers == customHomePlayers &&
+                awayPlayers == customAwayPlayers)
+            {
+                return false;
+            }
+            QueueMatchConfiguration(
+                detectedMode,
+                controlMode,
+                homePlayers,
+                awayPlayers,
+                resetScore: false);
+            return true;
+        }
+
+        private void SynchronizeAutomaticMatchModeFromRoster()
+        {
+            if (!automaticMatchMode ||
+                !TryGetAuthoredRosterCounts(out int homePlayers, out int awayPlayers))
+            {
+                return;
+            }
+            customHomePlayers = homePlayers;
+            customAwayPlayers = awayPlayers;
+            matchMode = ResolveMatchMode(homePlayers, awayPlayers);
+        }
+
+        private bool TryGetAuthoredRosterCounts(
+            out int homePlayers,
+            out int awayPlayers)
+        {
+            homePlayers = 0;
+            awayPlayers = 0;
+            if (players == null)
+            {
+                return false;
+            }
+            for (int index = 0; index < players.Length; index++)
+            {
+                BasketballTeamMember member = players[index];
+                if (member == null || !member.gameObject.activeSelf)
+                {
+                    continue;
+                }
+                if (member.TeamId == 0)
+                {
+                    homePlayers++;
+                }
+                else if (member.TeamId == 1)
+                {
+                    awayPlayers++;
+                }
+            }
+            homePlayers = Mathf.Clamp(homePlayers, 0, 5);
+            awayPlayers = Mathf.Clamp(awayPlayers, 0, 5);
+            return homePlayers > 0 && awayPlayers > 0;
+        }
+
+        private static BasketballMatchMode ResolveMatchMode(
+            int homePlayers,
+            int awayPlayers)
+        {
+            return homePlayers == awayPlayers &&
+                   homePlayers >= 1 && homePlayers <= 5
+                ? (BasketballMatchMode)homePlayers
+                : BasketballMatchMode.Custom;
+        }
+
         private void ApplyMatchMode()
         {
+            SynchronizeAutomaticMatchModeFromRoster();
             int homeLimit = matchMode == BasketballMatchMode.Custom
                 ? customHomePlayers
                 : (int)matchMode;
@@ -1622,6 +1759,7 @@ namespace CrowdEyes.AI4Animation.Basketball
             passLockDot = 0.82f;
             passTimeoutSeconds = 1.5f;
             scoreRestartDelay = 1.25f;
+            automaticMatchMode = true;
             matchMode = BasketballMatchMode.FiveOnFive;
             controlMode = BasketballMatchControlMode.SelectedPlayerWithRuleAI;
             customHomePlayers = 5;

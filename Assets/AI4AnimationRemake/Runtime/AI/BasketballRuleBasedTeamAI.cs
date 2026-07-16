@@ -13,6 +13,7 @@ namespace CrowdEyes.AI4Animation.Basketball
         [SerializeField, Min(0.05f)] private float maximumShotAlignTime = 0.22f;
         [SerializeField, Min(0.5f)] private float driveStopDistance = 4.2f;
         [SerializeField, Min(0.2f)] private float defenseSpacing = 0.9f;
+        [SerializeField, Range(0f, 1f)] private float defensiveAggression = 0.72f;
         [SerializeField, Min(0.2f)] private float stealAttemptDistance = 1.15f;
         [SerializeField, Range(-1f, 1f)] private float minimumStealFacingDot = 0.35f;
         [SerializeField, Min(0.05f)] private float stealAttemptDuration = 0.18f;
@@ -558,9 +559,13 @@ namespace CrowdEyes.AI4Animation.Basketball
                     defendedHoop.Center - opponentPosition,
                     court.CourtUp)
                 : Vector3.zero;
+            float effectiveDefenseSpacing = Mathf.Lerp(
+                defenseSpacing + 0.22f,
+                Mathf.Max(0.45f, defenseSpacing * 0.72f),
+                defensiveAggression);
             Vector3 target = opponentPosition +
                              (towardHoop.sqrMagnitude > 1e-8f
-                                 ? towardHoop.normalized * defenseSpacing
+                                 ? towardHoop.normalized * effectiveDefenseSpacing
                                  : Vector3.zero);
             BasketballTeamRole role = rosterIndex >= 0
                 ? roles[rosterIndex]
@@ -578,9 +583,12 @@ namespace CrowdEyes.AI4Animation.Basketball
                 opponentPosition,
                 sprint: Vector3.Distance(
                     defender.ActorRootPosition,
-                    target) > defenseSprintDistance,
+                    target) > Mathf.Lerp(
+                        defenseSprintDistance * 1.15f,
+                        defenseSprintDistance * 0.65f,
+                        defensiveAggression),
                 avoidPlayers: true);
-            if (assignment == owner && ShouldAttemptSteal(
+            if (role == BasketballTeamRole.OnBallDefender && ShouldAttemptSteal(
                     member,
                     owner,
                     rosterIndex))
@@ -666,7 +674,12 @@ namespace CrowdEyes.AI4Animation.Basketball
             Vector3 toBall = Vector3.ProjectOnPlane(
                 ballPosition - defenderState.ActorRootPosition,
                 court.CourtUp);
-            if (toBall.magnitude > stealAttemptDistance)
+            float effectiveAttemptDistance = stealAttemptDistance *
+                                             Mathf.Lerp(
+                                                 0.92f,
+                                                 1.18f,
+                                                 defensiveAggression);
+            if (toBall.magnitude > effectiveAttemptDistance)
             {
                 return false;
             }
@@ -676,7 +689,14 @@ namespace CrowdEyes.AI4Animation.Basketball
             float facingDot = toBall.sqrMagnitude > 1e-8f && forward.sqrMagnitude > 1e-8f
                 ? Vector3.Dot(forward.normalized, toBall.normalized)
                 : 1f;
-            if (facingDot < minimumStealFacingDot)
+            float effectiveFacingDot = Mathf.Clamp(
+                minimumStealFacingDot + Mathf.Lerp(
+                    0.16f,
+                    -0.16f,
+                    defensiveAggression),
+                -1f,
+                1f);
+            if (facingDot < effectiveFacingDot)
             {
                 return false;
             }
@@ -687,16 +707,27 @@ namespace CrowdEyes.AI4Animation.Basketball
             float handContact = Mathf.Max(
                 ownerState.Contacts[BasketballAgentState.ContactIndex(pivot, 2)],
                 ownerState.Contacts[BasketballAgentState.ContactIndex(pivot, 3)]);
-            bool exposed = Mathf.Abs(localBall.x) >= 0.32f ||
-                           localBall.y <= 0.9f ||
-                           handContact <= 0.4f;
+            bool exposed = Mathf.Abs(localBall.x) >= Mathf.Lerp(
+                               0.4f,
+                               0.26f,
+                               defensiveAggression) ||
+                           localBall.y <= Mathf.Lerp(
+                               0.78f,
+                               1.02f,
+                               defensiveAggression) ||
+                           handContact <= Mathf.Lerp(
+                               0.32f,
+                               0.5f,
+                               defensiveAggression);
             if (!exposed)
             {
                 return false;
             }
 
-            stealUntil[rosterIndex] = Time.time + stealAttemptDuration;
-            nextStealAt[rosterIndex] = Time.time + stealAttemptCooldown;
+            stealUntil[rosterIndex] = Time.time + stealAttemptDuration *
+                Mathf.Lerp(0.85f, 1.45f, defensiveAggression);
+            nextStealAt[rosterIndex] = Time.time + stealAttemptCooldown *
+                Mathf.Lerp(1.25f, 0.58f, defensiveAggression);
             return true;
         }
 
@@ -776,6 +807,7 @@ namespace CrowdEyes.AI4Animation.Basketball
                 {
                     roles[ownerIndex] = BasketballTeamRole.BallHandler;
                 }
+                int primaryOnBallDefender = FindPrimaryOnBallDefender(owner);
                 for (int index = 0; index < players.Length; index++)
                 {
                     BasketballTeamMember member = players[index];
@@ -790,12 +822,14 @@ namespace CrowdEyes.AI4Animation.Basketball
                             : BasketballTeamRole.Spacer;
                         continue;
                     }
-                    BasketballTeamMember assignment = FindDefensiveAssignment(member);
+                    BasketballTeamMember assignment = index == primaryOnBallDefender
+                        ? owner
+                        : FindDefensiveAssignment(member);
                     int assignmentIndex = assignment != null
                         ? FindRosterIndex(assignment.PlayerIndex)
                         : ownerIndex;
                     assignedOpponentRosterIndices[index] = assignmentIndex;
-                    roles[index] = assignment == owner
+                    roles[index] = index == primaryOnBallDefender
                         ? BasketballTeamRole.OnBallDefender
                         : BasketballTeamRole.OffBallDefender;
                 }
@@ -869,12 +903,15 @@ namespace CrowdEyes.AI4Animation.Basketball
 
         private void AssignOffenseSupportRoles(BasketballTeamMember owner)
         {
-            if (owner == null || TeamCount(owner.TeamId) < 3)
+            if (owner == null || TeamCount(owner.TeamId) < 2)
             {
                 return;
             }
 
-            AssignTransitionSafety(owner.TeamId, possession.IntendedReceiver ?? owner);
+            if (TeamCount(owner.TeamId) >= 3)
+            {
+                AssignTransitionSafety(owner.TeamId, possession.IntendedReceiver ?? owner);
+            }
             Vector3 cutTarget = GetCutTarget(owner.TeamId, owner);
             int cutter = FindClosestRoleCandidate(
                 cutTarget,
@@ -925,7 +962,7 @@ namespace CrowdEyes.AI4Animation.Basketball
         private void AssignHelpDefender(BasketballTeamMember owner)
         {
             int defensiveTeam = 1 - owner.TeamId;
-            if (TeamCount(defensiveTeam) < 3)
+            if (TeamCount(defensiveTeam) < 2)
             {
                 return;
             }
@@ -1213,6 +1250,35 @@ namespace CrowdEyes.AI4Animation.Basketball
                     bestScore = score;
                     best = index;
                     interceptPoint = ClampTargetToCourt(point);
+                }
+            }
+            return best;
+        }
+
+        private int FindPrimaryOnBallDefender(BasketballTeamMember owner)
+        {
+            if (owner?.Controller?.State == null)
+            {
+                return -1;
+            }
+            int best = -1;
+            float bestDistance = float.PositiveInfinity;
+            Vector3 ownerPosition = owner.Controller.State.ActorRootPosition;
+            for (int index = 0; index < players.Length; index++)
+            {
+                BasketballTeamMember candidate = players[index];
+                if (candidate == null || !candidate.IsOnCourt ||
+                    candidate.TeamId == owner.TeamId ||
+                    candidate.Controller?.State == null)
+                {
+                    continue;
+                }
+                float distance = Vector3.SqrMagnitude(
+                    candidate.Controller.State.ActorRootPosition - ownerPosition);
+                if (distance < bestDistance)
+                {
+                    bestDistance = distance;
+                    best = index;
                 }
             }
             return best;

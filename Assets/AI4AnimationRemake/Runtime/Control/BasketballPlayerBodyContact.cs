@@ -20,6 +20,8 @@ namespace CrowdEyes.AI4Animation.Basketball
         [SerializeField, Min(0.01f)] private float contactPadding = 0.04f;
         [SerializeField, Min(0.01f)] private float maximumCorrectionPerTick = 0.09f;
         [SerializeField, Min(0.1f)] private float torsoOcclusionRadius = 0.3f;
+        [SerializeField, Min(0.04f)] private float armOcclusionRadius = 0.11f;
+        [SerializeField, Min(0.04f)] private float handOcclusionRadius = 0.1f;
 
         private CapsuleCollider capsule;
         private Rigidbody body;
@@ -54,6 +56,8 @@ namespace CrowdEyes.AI4Animation.Basketball
             contactPadding = Mathf.Max(0.01f, contactPadding);
             maximumCorrectionPerTick = Mathf.Max(0.01f, maximumCorrectionPerTick);
             torsoOcclusionRadius = Mathf.Max(0.1f, torsoOcclusionRadius);
+            armOcclusionRadius = Mathf.Max(0.04f, armOcclusionRadius);
+            handOcclusionRadius = Mathf.Max(0.04f, handOcclusionRadius);
             CacheAndConfigure();
         }
 
@@ -116,11 +120,34 @@ namespace CrowdEyes.AI4Animation.Basketball
             Vector3 handToBall = ballPosition - handPosition;
             // Exclude the final part near the ball so a legitimate touch on a
             // ball held outside the torso is not rejected.
-            for (int sample = 1; sample <= 5; sample++)
+            for (int sample = 1; sample <= 6; sample++)
             {
-                float t = sample / 7f;
+                float t = sample / 8f;
                 Vector3 point = handPosition + handToBall * t;
                 if (DistanceToSegment(point, lower, upper) < torsoOcclusionRadius)
+                {
+                    return true;
+                }
+                if (DistanceToSegment(
+                        point,
+                        ownerState.BonePositions[16],
+                        ownerState.BonePositions[17]) < armOcclusionRadius ||
+                    DistanceToSegment(
+                        point,
+                        ownerState.BonePositions[17],
+                        ownerState.BonePositions[18]) < armOcclusionRadius ||
+                    DistanceToSegment(
+                        point,
+                        ownerState.BonePositions[23],
+                        ownerState.BonePositions[24]) < armOcclusionRadius ||
+                    DistanceToSegment(
+                        point,
+                        ownerState.BonePositions[24],
+                        ownerState.BonePositions[25]) < armOcclusionRadius ||
+                    Vector3.Distance(point, ownerState.BonePositions[18]) <
+                        handOcclusionRadius ||
+                    Vector3.Distance(point, ownerState.BonePositions[25]) <
+                        handOcclusionRadius)
                 {
                     return true;
                 }

@@ -1,0 +1,39 @@
+# Unity generated directories
+[Ll]ibrary/
+[Tt]emp/
+[Oo]bj/
+[Bb]uild/
+[Bb]uilds/
+[Ll]ogs/
+[Uu]serSettings/
+[Mm]emoryCaptures/
+[Rr]ecordings/
+TestResults/
+
+# Unity editor recovery and generated local artifacts
+Assets/_Recovery/
+Assets/_Recovery.meta
+Assets/Scenes/untitle.unity
+Assets/Scenes/untitle.unity.meta
+ReflectionProbe-*.exr
+
+# IDE and local tooling
+.vs/
+.vscode/
+.idea/
+.codebase-memory/
+*.csproj
+*.sln
+*.slnx
+*.user
+*.userprefs
+*.pidb
+*.booproj
+*.svd
+*.tmp
+*.log
+
+# OS metadata
+.DS_Store
+Thumbs.db
+Desktop.ini

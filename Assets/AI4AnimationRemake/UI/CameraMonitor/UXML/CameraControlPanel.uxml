@@ -1,0 +1,163 @@
+<ui:UXML xmlns:ui="UnityEngine.UIElements">
+    <Style src="../USS/CameraControlPanel.uss" />
+
+    <ui:VisualElement class="panel-root">
+        <ui:VisualElement class="app-window">
+            <ui:VisualElement class="top-bar">
+                <ui:Label text="Courtside Capture" class="app-title" />
+                <ui:VisualElement class="header-tabs">
+                    <ui:Button name="header-tab-camera" text="相機控制" class="header-tab selected" />
+                    <ui:Button name="header-tab-render" text="全局畫質 / 渲染" class="header-tab" />
+                </ui:VisualElement>
+                <ui:VisualElement class="top-bar-actions">
+                    <ui:Label name="status-label" text="系統就緒" class="status-text" />
+                    <ui:Button name="close-main-ui" text="×" class="close-button" />
+                </ui:VisualElement>
+            </ui:VisualElement>
+
+            <ui:VisualElement class="workspace">
+                <ui:VisualElement name="side-menu" class="side-menu">
+                    <ui:Label text="攝影機" class="sidebar-title" />
+                    <ui:ScrollView name="camera-list" class="camera-list" />
+                </ui:VisualElement>
+
+                <ui:VisualElement class="capture-workspace">
+                    <ui:VisualElement name="page-camera-controls">
+                        <ui:VisualElement class="capture-toolbar">
+                            <ui:Label text="即時預覽" class="page-title" />
+                            <ui:Label name="selected-camera-label" text="尚未選擇攝影機" class="selected-camera" />
+                        </ui:VisualElement>
+
+                        <ui:VisualElement class="capture-body">
+                            <ui:VisualElement class="preview-column">
+                                <ui:VisualElement class="preview-card">
+                                    <ui:VisualElement class="preview-header">
+                                        <ui:Label text="預覽" class="section-title" />
+                                    </ui:VisualElement>
+                                    <ui:VisualElement class="preview-stage">
+                                        <ui:Image name="camera-preview" scale-mode="ScaleToFit" class="preview" />
+                                    </ui:VisualElement>
+                                </ui:VisualElement>
+                            </ui:VisualElement>
+
+                            <ui:ScrollView class="settings-pane">
+                                <ui:Label text="相機設定" class="inspector-title" />
+                                <ui:VisualElement class="settings-card">
+                                    <ui:Label text="相機內參" class="settings-title" />
+                                    <ui:VisualElement class="field-row">
+                                        <ui:IntegerField name="image-width" label="寬度" class="compact-field gap-right" />
+                                        <ui:IntegerField name="image-height" label="高度" class="compact-field" />
+                                    </ui:VisualElement>
+                                    <ui:VisualElement class="field-row">
+                                        <ui:FloatField name="fx" label="fx" class="compact-field gap-right" />
+                                        <ui:FloatField name="fy" label="fy" class="compact-field" />
+                                    </ui:VisualElement>
+                                    <ui:VisualElement class="field-row">
+                                        <ui:FloatField name="cx" label="cx" class="compact-field gap-right" />
+                                        <ui:FloatField name="cy" label="cy" class="compact-field" />
+                                    </ui:VisualElement>
+                                    <ui:VisualElement class="field-row">
+                                        <ui:FloatField name="near-clip" label="Near" class="compact-field gap-right" />
+                                        <ui:FloatField name="far-clip" label="Far" class="compact-field" />
+                                    </ui:VisualElement>
+                                    <ui:VisualElement class="field-row">
+                                        <ui:FloatField name="capture-fps" label="FPS" class="compact-field gap-right" />
+                                        <ui:IntegerField name="jpeg-quality" label="JPEG" class="compact-field" />
+                                    </ui:VisualElement>
+                                    <ui:VisualElement class="button-row-settings">
+                                        <ui:Button name="apply-intrinsics" text="套用" class="primary" />
+                                        <ui:Button name="validate-intrinsics" text="驗證" />
+                                        <ui:Button name="reset-intrinsics" text="重設" class="quiet" />
+                                    </ui:VisualElement>
+                                </ui:VisualElement>
+
+                                <ui:VisualElement class="settings-card">
+                                    <ui:Label text="世界座標" class="settings-title" />
+                                    <ui:Label text="位置" class="field-caption" />
+                                    <ui:VisualElement class="field-row triple">
+                                        <ui:FloatField name="position-x" label="X" class="axis-field gap-right" />
+                                        <ui:FloatField name="position-y" label="Y" class="axis-field gap-right" />
+                                        <ui:FloatField name="position-z" label="Z" class="axis-field" />
+                                    </ui:VisualElement>
+                                    <ui:Label text="旋轉" class="field-caption" />
+                                    <ui:VisualElement class="field-row triple">
+                                        <ui:FloatField name="rotation-x" label="X" class="axis-field gap-right" />
+                                        <ui:FloatField name="rotation-y" label="Y" class="axis-field gap-right" />
+                                        <ui:FloatField name="rotation-z" label="Z" class="axis-field" />
+                                    </ui:VisualElement>
+                                    <ui:VisualElement class="button-row-settings wrap">
+                                        <ui:Button name="look-at-center" text="看向中心" />
+                                        <ui:Button name="look-at-ball" text="追蹤籃球" />
+                                        <ui:Button name="reset-transform" text="重設" class="quiet" />
+                                    </ui:VisualElement>
+                                </ui:VisualElement>
+                            </ui:ScrollView>
+                        </ui:VisualElement>
+                    </ui:VisualElement>
+
+                    <ui:ScrollView name="page-global-render" class="render-page" style="display: none;">
+                        <ui:Label text="全局畫質與渲染設定" class="inspector-title" />
+                        <ui:VisualElement class="settings-card">
+                            <ui:Label text="全局擷取品質（套用全部相機）" class="settings-title" />
+                            <ui:VisualElement class="field-row">
+                                <ui:FloatField name="global-capture-fps" label="FPS" class="compact-field gap-right" value="60" />
+                                <ui:IntegerField name="global-jpeg-quality" label="JPEG" class="compact-field" value="50" />
+                            </ui:VisualElement>
+                        </ui:VisualElement>
+
+                        <ui:VisualElement class="settings-card">
+                            <ui:Label text="HDRP 動態解析度 / DLSS（全局）" class="settings-title" />
+                            <ui:Toggle name="global-dynamic-resolution" label="啟用 Dynamic Resolution" />
+                            <ui:Toggle name="global-enable-dlss" label="啟用 DLSS" />
+                            <ui:DropdownField name="global-dlss-mode" label="DLSS 檔位" class="compact-field" />
+                        </ui:VisualElement>
+
+                        <ui:VisualElement class="settings-card">
+                            <ui:Label text="渲染品質（全局）" class="settings-title" />
+                            <ui:VisualElement class="field-row">
+                                <ui:FloatField name="global-shadow-distance" label="Shadow Distance" class="compact-field gap-right" />
+                                <ui:FloatField name="global-lod-bias" label="LOD Bias" class="compact-field" />
+                            </ui:VisualElement>
+                            <ui:DropdownField name="global-anti-aliasing-mode" label="Anti-Aliasing" class="compact-field" />
+                            <ui:VisualElement class="button-row-settings">
+                                <ui:Button name="apply-global-render-settings" text="套用全局設定" class="primary" />
+                                <ui:Button name="reload-global-render-settings" text="重新讀取" class="quiet" />
+                            </ui:VisualElement>
+                        </ui:VisualElement>
+                    </ui:ScrollView>
+                </ui:VisualElement>
+            </ui:VisualElement>
+
+            <ui:VisualElement class="global-controls">
+                <ui:VisualElement class="control-group">
+                    <ui:Label text="串流" class="control-label" />
+                    <ui:VisualElement class="button-row compact">
+                        <ui:Button name="start-streaming" text="開始" class="primary" />
+                        <ui:Button name="stop-streaming" text="停止" class="danger-quiet" />
+                    </ui:VisualElement>
+                </ui:VisualElement>
+
+                <ui:VisualElement class="control-group ball-group">
+                    <ui:Label text="籃球" class="control-label" />
+                    <ui:VisualElement class="button-row compact">
+                        <ui:Button name="reset-ball" text="重設" />
+                        <ui:IntegerField name="seed" label="Seed" value="12345" class="seed-field" />
+                        <ui:Button name="reset-ball-seed" text="套用" />
+                    </ui:VisualElement>
+                </ui:VisualElement>
+
+                <ui:VisualElement class="control-group data-group">
+                    <ui:Label text="資料" class="control-label" />
+                    <ui:VisualElement class="button-row compact wrap">
+                        <ui:Button name="export-config" text="匯出 JSON" />
+                        <ui:Button name="import-config" text="匯入 JSON" />
+                        <ui:VisualElement class="frustum-option">
+                            <ui:Toggle name="show-frustums" value="true" class="compact-check" />
+                            <ui:Label text="顯示視錐" class="frustum-label" />
+                        </ui:VisualElement>
+                    </ui:VisualElement>
+                </ui:VisualElement>
+            </ui:VisualElement>
+        </ui:VisualElement>
+    </ui:VisualElement>
+</ui:UXML>

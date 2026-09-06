@@ -111,6 +111,7 @@
                 <ui:VisualElement class="help-row"><ui:VisualElement class="key-group"><ui:Label text="TAB" class="keycap keycap-wide" /></ui:VisualElement><ui:Label text="切換操控球員" class="help-action" /></ui:VisualElement>
                 <ui:VisualElement class="help-row"><ui:VisualElement class="key-group"><ui:Label text="RMB" class="keycap keycap-wide" /></ui:VisualElement><ui:Label text="持球位置控制" class="help-action" /></ui:VisualElement>
                 <ui:VisualElement class="help-row"><ui:VisualElement class="key-group"><ui:Label text="P" class="keycap keycap-single" /></ui:VisualElement><ui:Label text="自由攝影機；全部球員交由 AI" class="help-action" /></ui:VisualElement>
+                <ui:VisualElement class="help-row"><ui:VisualElement class="key-group"><ui:Label text="M" class="keycap keycap-single" /></ui:VisualElement><ui:Label text="開啟多視角攝影機選單" class="help-action" /></ui:VisualElement>
             </ui:VisualElement>
         </ui:VisualElement>
 
@@ -132,7 +133,9 @@
                 <ui:VisualElement class="help-row"><ui:VisualElement class="key-group"><ui:Label text="SHIFT" class="keycap keycap-wide" /></ui:VisualElement><ui:Label text="加速移動" class="help-action" /></ui:VisualElement>
                 <ui:VisualElement class="help-row"><ui:VisualElement class="key-group"><ui:Label text="P" class="keycap keycap-single" /></ui:VisualElement><ui:Label text="返回球員攝影機" class="help-action" /></ui:VisualElement>
                 <ui:VisualElement class="help-row"><ui:VisualElement class="key-group"><ui:Label text="ESC" class="keycap keycap-wide" /></ui:VisualElement><ui:Label text="釋放／鎖定滑鼠" class="help-action" /></ui:VisualElement>
+                <ui:VisualElement class="help-row"><ui:VisualElement class="key-group"><ui:Label text="M" class="keycap keycap-single" /></ui:VisualElement><ui:Label text="開啟多視角攝影機選單" class="help-action" /></ui:VisualElement>
             </ui:VisualElement>
         </ui:VisualElement>
+
     </ui:VisualElement>
 </ui:UXML>

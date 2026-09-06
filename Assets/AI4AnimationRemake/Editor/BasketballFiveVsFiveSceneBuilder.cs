@@ -45,7 +45,12 @@ namespace CrowdEyes.AI4Animation.Editor
             CourtRoot + "/Source/BasketballSyntheticDataEnvironment.prefab";
         private const string CourtMaterialRoot = CourtRoot + "/Materials";
         private const string CourtPrefabPath = CourtRoot + "/BasketballCourt.prefab";
-        private const string CourtFloorTexturePath = CourtRoot + "/Source/wood_floor.jpg";
+        private const string CourtFloorTexturePath =
+            CourtRoot + "/Source/laminate_floor_02_diff_adjusted.png";
+        private const string CourtFloorNormalPath =
+            CourtRoot + "/Source/laminate_floor_02_nor_gl_2k.jpg";
+        private const string CourtFloorMaskPath =
+            CourtRoot + "/Source/laminate_floor_02_mask_2k.png";
         private const string OneShotMarker =
             "Assets/AI4AnimationRemake/Editor/BuildBasketballFiveVsFive.once";
 
@@ -754,11 +759,16 @@ namespace CrowdEyes.AI4Animation.Editor
                 existingCourt.NegativeZHoop != null &&
                 usesDemoAxes)
             {
+                CreateCourtMaterial(
+                    "CourtFloor_URP",
+                    CourtFloorTexturePath,
+                    Color.white,
+                    0.44f);
                 Material existingRedBoxMaterial = CreateCourtMaterial(
                     "BackboardTarget_URP",
                     null,
-                    new Color(0.34f, 0.018f, 0.012f, 1f),
-                    0.05f,
+                    new Color(0.72f, 0.012f, 0.006f, 1f),
+                    0.08f,
                     reflective: false);
                 EnsurePrefabRendererMaterial(
                     CourtPrefabPath,
@@ -806,8 +816,8 @@ namespace CrowdEyes.AI4Animation.Editor
             Material redBoxMaterial = CreateCourtMaterial(
                 "BackboardTarget_URP",
                 null,
-                new Color(0.34f, 0.018f, 0.012f, 1f),
-                0.05f,
+                new Color(0.72f, 0.012f, 0.006f, 1f),
+                0.08f,
                 reflective: false);
             Material padding = CreateCourtMaterial(
                 "Padding_URP",
@@ -952,7 +962,10 @@ namespace CrowdEyes.AI4Animation.Editor
             EnsureFolder(CourtMaterialRoot);
             string path = $"{CourtMaterialRoot}/{name}.mat";
             Material material = AssetDatabase.LoadAssetAtPath<Material>(path);
-            Shader shader = Shader.Find("Universal Render Pipeline/Lit");
+            bool isCourtFloor = name == "CourtFloor_URP";
+            Shader shader = Shader.Find(isCourtFloor
+                ? "CrowdEyes/Basketball/Twin Court Floor URP"
+                : "Universal Render Pipeline/Lit");
             if (shader == null)
             {
                 throw new InvalidOperationException(
@@ -982,6 +995,24 @@ namespace CrowdEyes.AI4Animation.Editor
                 MaterialGlobalIlluminationFlags.EmissiveIsBlack;
             material.SetFloat("_SpecularHighlights", reflective ? 1f : 0f);
             material.SetFloat("_EnvironmentReflections", reflective ? 1f : 0f);
+            if (isCourtFloor)
+            {
+                material.SetTextureScale("_BaseMap", new Vector2(10f, 10f));
+                material.SetTexture(
+                    "_NormalMap",
+                    AssetDatabase.LoadAssetAtPath<Texture2D>(CourtFloorNormalPath));
+                material.SetTexture(
+                    "_MaskMap",
+                    AssetDatabase.LoadAssetAtPath<Texture2D>(CourtFloorMaskPath));
+                material.SetFloat("_NormalScale", 0.35f);
+                material.SetFloat("_MetallicRemapMin", 0f);
+                material.SetFloat("_MetallicRemapMax", 1f);
+                material.SetFloat("_AORemapMin", 0f);
+                material.SetFloat("_AORemapMax", 1f);
+                material.SetFloat("_SmoothnessRemapMin", 0.62683564f);
+                material.SetFloat("_SmoothnessRemapMax", 0.8630134f);
+                material.SetFloat("_AlbedoBoost", 1.5f);
+            }
             material.enableInstancing = true;
             material.SetFloat("_Surface", transparent ? 1f : 0f);
             material.SetFloat("_ZWrite", transparent ? 0f : 1f);

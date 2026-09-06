@@ -7,7 +7,7 @@ GPU-accelerated neural basketball simulation and character motion for Unity 6.
 ![Backend](https://img.shields.io/badge/Backend-GPUCompute-0078D4)
 ![Status](https://img.shields.io/badge/status-research%20prototype-orange)
 
-![NeuralCourt Basketball reference scene](Assets/Screenshots/BasketballReference_Phase1.png)
+![NeuralCourt Basketball 5v5 Remake scene](Assets/Screenshots/NeuralCourt_Basketball_5v5.png)
 
 NeuralCourt Basketball is a Unity 6 reconstruction and extension of the basketball demo from
 [facebookresearch/ai4animation](https://github.com/facebookresearch/ai4animation). It preserves
@@ -69,25 +69,44 @@ demo scene and related generated assets, so commit or stash local scene edits fi
 
 ## Controls
 
+The tables below follow the bindings in `BasketballKeyboardMouseInputProvider`,
+`BasketballMatchController.RouteIntents`, `ThirdPersonOrbitCamera`, and the checked-in HUD.
+
+### Player mode
+
+| Input | Action shown by the Remake HUD |
+|---|---|
+| `WASD` | Move, strafe, and move backward |
+| `Shift` | Sprint and face the movement direction |
+| `Space` | Shoot |
+| Hold `Ctrl`, then left click | Lock a teammate and pass while carrying the ball |
+| Hold `Ctrl` off-ball | Call for a pass; request pickup when the ball is loose |
+| Hold left mouse near an opponent carrier | Attempt a close-range tip/steal |
+| `Tab` | Cycle the controlled on-court player |
+| Hold right mouse + move mouse | Change the neural ball-target control |
+| `P` | Enter Free Cam and hand all active players to rule AI |
+| `M` | Open the multi-camera preview/calibration panel |
+| `U` | Switch between gameplay help and debug telemetry |
+
+The player camera orbits with normal mouse movement, zooms with the wheel, and recenters with `R`.
+`Esc` releases or locks the cursor; left click relocks it while released.
+
+### Free Cam
+
 | Input | Action |
 |---|---|
-| `Tab` | Cycle the controlled player |
-| `WASD` | Camera-relative movement |
-| `Shift` | Sprint while moving forward |
-| `Q` / `E` | Left/right turn intent |
-| `Space` | Shoot |
-| `Ctrl` + look + left click | Select a teammate and pass while carrying the ball |
-| `Ctrl` off-ball | Call for a pass; with a loose/in-flight ball, request hold/catch |
-| Left click off-ball | Steal/tip intent |
-| Hold right mouse | Ball-control intent |
-| Mouse / wheel / `R` | Orbit / zoom / recenter the player camera |
-| `P` | Toggle Free Cam; rule AI controls all players while active |
-| `M` | Toggle the multi-camera preview and calibration panel |
-| `U` | Switch gameplay help and telemetry HUD views |
+| Mouse | Look around |
+| `WASD` | Fly horizontally |
+| `Q` / `E` | Move down / up |
+| `Shift` | Increase flight speed |
+| `P` | Return to the player camera |
+| `M` | Open the multi-camera panel |
 | `Esc` | Release or lock the cursor |
 
-Team A uses players P1-P5 and Team B uses P6-P10. A cyan ground ring marks the selected player;
-a gold overhead ring marks the selected pass target.
+Team A uses P1-P5 and Team B uses P6-P10. A cyan ground ring marks the selected player; a gold
+overhead ring marks the selected pass target. The legacy gamepad adapter still provides movement,
+ball-target, spin, ball-height, sprint, hold, and shoot intents, but keyboard/mouse is the complete
+match-control path.
 
 ## How it works
 
